@@ -1,0 +1,9 @@
+# Runtime packages for YT Bulk Publish (Windows)
+pywebview>=5.3
+websocket-client>=1.8
+psutil>=6.0
+pywin32>=306; sys_platform == "win32"
+Pillow>=10.4
+
+# Packaging (only needed to build the EXE)
+pyinstaller>=6.10
