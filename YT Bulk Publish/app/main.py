@@ -22,7 +22,7 @@ def main() -> None:
         min_size=(960, 640),
         frameless=True,
         easy_drag=False,
-        background_color="#0b0f1e",
+        background_color="#f3f5fb",
         text_select=False,
     )
     api.window = window

@@ -221,6 +221,25 @@ class MockState:
     def find(self, video_id: str) -> dict | None:
         return next((v for v in self.videos if v["id"] == video_id), None)
 
+    def load_many(self, count: int, page_size: int = 10) -> None:
+        """Fill the channel with `count` generated videos to exercise paging."""
+        statuses = ["draft", "private", "unlisted", "public"]
+        self.videos = [
+            {
+                "id": f"gen{index:08d}",
+                "title": f"Generated clip {index:02d}",
+                "status": statuses[index % len(statuses)],
+                "description": "",
+                "audience": "not_for_kids",
+                "tags": [],
+                "playlists": [],
+            }
+            for index in range(1, count + 1)
+        ]
+        self.saves = []
+        self.publishes = []
+        self.page_size = page_size
+
 
 STATE = MockState()
 
@@ -280,6 +299,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps({"videos": STATE.videos, "saves": STATE.saves, "publishes": STATE.publishes}).encode(), "application/json")
         if path == "/api/reset":
             STATE.reset()
+            return self._send(b"{}", "application/json")
+        if path == "/api/load_many":
+            query = dict(part.split("=", 1) for part in urlparse(self.path).query.split("&") if "=" in part)
+            STATE.load_many(int(query.get("count", "32")), int(query.get("page_size", "10")))
             return self._send(b"{}", "application/json")
         return self._send(b"not found", status=404)
 

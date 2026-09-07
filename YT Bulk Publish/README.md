@@ -1,6 +1,6 @@
 # YT Bulk Publish
 
-Publish, rename and update many YouTube Studio videos in one go, from a Windows desktop program with a frosted-glass interface.
+Publish, rename and update many YouTube Studio videos in one go, from a Windows desktop program with a white frosted-glass interface.
 
 YouTube Studio has no bulk publish for uploaded drafts and no flexible bulk rename. This tool works inside your own browser and clicks through the same screens a person would, one video at a time, while you watch.
 
