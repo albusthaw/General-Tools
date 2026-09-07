@@ -60,6 +60,8 @@ On 7 September 2026 the engine was run against a real channel with two freshly u
 
 Both runs finished with zero problems. Use the practice run on one or two videos first whenever YouTube has changed its pages; the activity log names any screen part that could not be found.
 
+A larger live run followed on the same day: 8 further clips were uploaded as drafts (YouTube's daily upload limit for the new channel stopped the batch at 10 videos per day, so 22 of the 30 prepared clips have to wait for later days). One bulk run over all 10 channel videos, mixing 8 drafts and 2 already-published videos, renamed the phrase "stress clip" to "Stress Test Clip", set the audience and published everything as Unlisted: 10 updated, 0 problems, about 53 seconds per draft and 6 seconds per video that needed no change. The rows-per-page control on the real list was switched to 10, 50 and 30 by the engine and verified each time; reading across several pages was stress-tested on the mock with 32 videos over 4 pages, because the smallest real page size (10) equals the number of videos on the channel today.
+
 ## Known limits
 
 - Scheduling relies on YouTube's date and time pickers and was not part of the live run; if it fails, the video is left unchanged.
