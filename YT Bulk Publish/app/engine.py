@@ -170,6 +170,7 @@ class BatchRunner:
                 self.log.error(f"{video.title or video.id}: {exc}")
                 with self._lock:
                     self.failed += 1
+                studio.recover()
             except DevToolsError as exc:
                 self._set_item(index, "failed", "Lost the link to the browser.")
                 self.log.error(f"Lost the link to the browser: {exc}")
@@ -183,6 +184,10 @@ class BatchRunner:
                 self.log.error(f"{video.title or video.id}: {exc}")
                 with self._lock:
                     self.failed += 1
+                try:
+                    studio.recover()
+                except Exception:  # noqa: BLE001
+                    pass
             finally:
                 with self._lock:
                     self.done = index + 1

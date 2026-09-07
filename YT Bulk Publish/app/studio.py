@@ -168,10 +168,10 @@ class Studio:
             time.sleep(0.3)
         raise StudioError(message or f"Could not find the expected part of the page ({selectors[0]}).")
 
-    def wait_gone(self, selectors: list[str], timeout: float = 20.0) -> bool:
+    def wait_gone(self, selectors: list[str], timeout: float = 20.0, visible: bool = True) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if not self.exists(selectors):
+            if not self.exists(selectors, visible=visible):
                 return True
             time.sleep(0.3)
         return False
@@ -255,10 +255,29 @@ class Studio:
             if not self.exists(S.ROW, visible=True):
                 raise StudioError("The open page does not show a video list. Open Content or a playlist in YouTube Studio first.")
             return current
-        if current.split("?")[0].rstrip("/") != url.rstrip("/"):
+        same_page = current.split("?")[0].rstrip("/") == url.rstrip("/")
+        clean = same_page and self.exists(S.ROW) and not self.exists(S.WIZARD, visible=False)
+        if not clean:
             self.goto(url)
         self.wait_for_rows()
         return url
+
+    def recover(self) -> None:
+        """Close whatever dialog is open so the next video can start cleanly."""
+        try:
+            if self.exists(S.WIZARD, visible=False):
+                self._close_wizard()
+            for _ in range(2):
+                close = self.find(S.SHARE_DIALOG_CLOSE) or self.find_text(["ytcp-button", "button"], S.SHARE_DIALOG_CLOSE_TEXT)
+                if not close:
+                    break
+                self.click(close, "Close button")
+                self.pause(0.5)
+        except (StudioError, DevToolsError):
+            try:
+                self.page.press("Escape")
+            except DevToolsError:
+                pass
 
     def wait_for_rows(self, timeout: float = 30.0) -> None:
         deadline = time.time() + timeout
@@ -334,9 +353,16 @@ class Studio:
             return "Nothing to change."
         if not video.id:
             return self._apply_from_list(video, changes, dry_run)
-        edit_url = f"{self.base_url}video/{video.id}/edit"
-        self.goto(edit_url)
-        kind = self._wait_for_editor_or_wizard()
+        kind = ""
+        if video.draft or video.status == "draft":
+            # Drafts open in the upload wizard through a link on the content page.
+            channel = self.channel_id()
+            if channel:
+                self.goto(S.DRAFT_DEEP_LINK.format(base=self.base_url, channel=channel, video_id=video.id))
+                kind = self._wait_for_editor_or_wizard(timeout=10.0)
+        if not kind:
+            self.goto(f"{self.base_url}video/{video.id}/edit")
+            kind = self._wait_for_editor_or_wizard()
         if kind == "wizard":
             return self._apply_in_wizard(video, changes, dry_run)
         if kind == "editor":
@@ -347,9 +373,11 @@ class Studio:
     def _wait_for_editor_or_wizard(self, timeout: float = 25.0) -> str:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self.exists(S.WIZARD):
+            # The draft wizard fades in, so check that it is present rather than visible.
+            if self.exists(S.WIZARD, visible=False):
+                self.pause(0.8)
                 return "wizard"
-            if self.exists(S.TITLE_BOX) and self.exists(S.SAVE_BUTTON + ["ytcp-button"]):
+            if self.exists(S.TITLE_BOX) and (self.exists(S.SAVE_BUTTON) or self.exists(S.EDITOR_ROOT)):
                 return "editor"
             time.sleep(0.4)
         return ""
@@ -510,10 +538,21 @@ class Studio:
         self.click(opener, "visibility box")
         self.wait_for(S.VISIBILITY_RADIOS, timeout=10, message="The visibility choices did not open.")
         self._choose_visibility(changes)
-        done = self.find_text(S.VISIBILITY_DONE + ["ytcp-button", "button"], S.VISIBILITY_DONE_TEXT)
+        # The choice only sticks when the pop-up's own Done button is pressed; Escape cancels it.
+        popup = self.find(S.VISIBILITY_POPUP)
+        done = self.find(S.VISIBILITY_DONE)
+        if not done and popup:
+            done = self.find_text(["ytcp-button", "button"], S.VISIBILITY_DONE_TEXT, popup)
         if done:
             self.click(done, "Done button")
-            self.pause(0.5)
+        else:
+            self.page.press("Escape")
+        self.pause(0.8)
+        if want != "schedule":
+            opener = self.find(S.VISIBILITY_OPENER)
+            shown = self.read(opener).lower() if opener else ""
+            if shown and want not in shown:
+                raise StudioError(f"The visibility box still shows “{shown.strip()}” instead of {want}.")
         notes.append(f"visibility set to {want}")
 
     def _choose_visibility(self, changes: Changes) -> None:
@@ -582,7 +621,7 @@ class Studio:
     # ---- the draft / upload wizard ------------------------------------------------------
     def _apply_in_wizard(self, video: Video, changes: Changes, dry_run: bool) -> str:
         notes: list[str] = []
-        wizard = self.wait_for(S.WIZARD, timeout=15, message="The draft window did not open.")
+        wizard = self.wait_for(S.WIZARD_VISIBLE, timeout=20, message="The draft window did not open.")
         self.pause(1.0)
         step = self.find(S.WIZARD_STEP_DETAILS)
         if step:
@@ -596,11 +635,12 @@ class Studio:
             # A draft has no Save button; going to the last step and back keeps the edits.
             self._close_wizard()
             return (", ".join(notes).capitalize() if notes else "Already up to date.") + " (still a draft)"
-        self._go_to_visibility_step()
         if dry_run:
+            # A practice run only reports; stepping forward needs the audience choice a real run makes.
             notes.append(f"would be published as {changes.visibility}")
             self._close_wizard()
             return "Practice run: " + ", ".join(notes)
+        self._go_to_visibility_step()
         self._choose_visibility(changes)
         done = self.find(S.WIZARD_DONE)
         if not done:
@@ -640,7 +680,7 @@ class Studio:
             if close and not self.exists(S.WIZARD_DONE):
                 self.click(close, "Close button")
                 self.pause(0.6)
-            if not self.exists(S.WIZARD):
+            if not self.exists(S.WIZARD, visible=False):
                 return
             time.sleep(0.5)
         # The wizard is still open; try the X button so the next video can start.
@@ -652,7 +692,7 @@ class Studio:
             self.click(close, "Close button")
             self.pause(0.6)
             self.dismiss_confirmation(timeout=1.5)
-        self.wait_gone(S.WIZARD, timeout=8)
+        self.wait_gone(S.WIZARD, timeout=8, visible=False)
 
 
 def connect_studio(

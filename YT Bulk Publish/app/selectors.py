@@ -36,11 +36,14 @@ AUDIENCE_KIDS = ["tp-yt-paper-radio-button[name='VIDEO_MADE_FOR_KIDS_MFK']", "[n
 AUDIENCE_NOT_KIDS = ["tp-yt-paper-radio-button[name='VIDEO_MADE_FOR_KIDS_NOT_MFK']", "[name='VIDEO_MADE_FOR_KIDS_NOT_MFK']"]
 
 VISIBILITY_OPENER = [
+    "ytcp-video-metadata-visibility #container",
+    "ytcp-video-metadata-visibility #select-button",
     "ytcp-video-metadata-visibility ytcp-text-dropdown-trigger",
     "ytcp-video-metadata-visibility #visibility-cell",
     "ytcp-video-metadata-visibility",
     "#visibility-cell",
 ]
+VISIBILITY_POPUP = ["ytcp-video-visibility-edit-popup tp-yt-paper-dialog", "ytcp-video-visibility-edit-popup", "ytcp-video-visibility-select"]
 VISIBILITY_RADIOS = ["#privacy-radios", "ytcp-video-visibility-select"]
 VISIBILITY_RADIO = {
     "public": ["tp-yt-paper-radio-button[name='PUBLIC']", "[name='PUBLIC']"],
@@ -52,7 +55,13 @@ SCHEDULE_DATE_TRIGGER = ["#datepicker-trigger", "ytcp-datetime-picker #datepicke
 SCHEDULE_DATE_INPUT = ["ytcp-date-picker input", "ytcp-date-picker tp-yt-paper-input input", "tp-yt-paper-dialog input", "ytcp-date-picker #textbox"]
 SCHEDULE_TIME_TRIGGER = ["#time-of-day-trigger", "ytcp-datetime-picker #time-of-day-trigger", "ytcp-text-dropdown-trigger#time-of-day-trigger"]
 SCHEDULE_TIME_ITEM = ["tp-yt-paper-item", "ytcp-text-menu tp-yt-paper-item", "paper-item"]
-VISIBILITY_DONE = ["ytcp-video-visibility-select #save-button", "ytcp-video-visibility-select ytcp-button", "ytcp-video-metadata-visibility ytcp-button"]
+VISIBILITY_DONE = [
+    "ytcp-video-visibility-edit-popup #save-button",
+    "ytcp-video-visibility-edit-popup ytcp-button#save-button",
+    "ytcp-video-visibility-select #save-button",
+    "ytcp-video-visibility-select ytcp-button",
+    "ytcp-video-metadata-visibility ytcp-button",
+]
 VISIBILITY_DONE_TEXT = r"^\s*(done|save)\s*$"
 
 PLAYLIST_OPENER = ["ytcp-video-metadata-playlists ytcp-text-dropdown-trigger", "ytcp-video-metadata-playlists", "#playlists-dropdown"]
@@ -63,9 +72,23 @@ PLAYLIST_DONE_TEXT = r"^\s*done\s*$"
 
 # ---- upload / draft wizard (ytcp-uploads-dialog) -------------------------
 WIZARD = ["ytcp-uploads-dialog"]
+# The host element above has no size of its own; these inner parts show when it is open.
+WIZARD_VISIBLE = [
+    "ytcp-uploads-dialog tp-yt-paper-dialog",
+    "ytcp-uploads-dialog #scrollable-content",
+    "ytcp-uploads-dialog #next-button",
+    "ytcp-uploads-dialog #done-button",
+]
 WIZARD_NEXT = ["ytcp-uploads-dialog #next-button", "#next-button"]
 WIZARD_DONE = ["ytcp-uploads-dialog #done-button", "#done-button"]
-WIZARD_CLOSE = ["ytcp-uploads-dialog #close-button", "ytcp-uploads-dialog ytcp-icon-button[aria-label*='Close']", "#close-button"]
+WIZARD_CLOSE = [
+    "ytcp-uploads-dialog #ytcp-uploads-dialog-close-button",
+    "#ytcp-uploads-dialog-close-button",
+    "ytcp-uploads-dialog #close-button",
+    "ytcp-uploads-dialog ytcp-icon-button[aria-label*='Close']",
+]
+# A draft opens straight into the wizard through this link on the content page.
+DRAFT_DEEP_LINK = "{base}channel/{channel}/videos/upload?d=ud&udvid={video_id}"
 WIZARD_STEP_VISIBILITY = ["ytcp-uploads-dialog #step-badge-3", "#step-badge-3", "ytcp-uploads-dialog .step-badge:nth-of-type(4)"]
 WIZARD_STEP_DETAILS = ["ytcp-uploads-dialog #step-badge-0", "#step-badge-0"]
 SHARE_DIALOG_CLOSE = [
@@ -187,7 +210,7 @@ HELPER_JS = r"""
     const status = H.statusFrom(visText);
     const dateEl = H.first(['.tablecell-date', '[class*="tablecell-date"]', '[class*="date"]'], row);
     const dateText = H.text(dateEl).replace(/\b(Published|Uploaded|Scheduled|Draft)\b/gi, '').trim();
-    const durEl = H.first(['.video-duration', '[class*="duration"]', 'ytcp-thumbnail-badge'], row);
+    const durEl = H.first(['ytcp-badge.timestamp-badge .label', 'ytcp-badge .label', '.video-duration', '[class*="duration"]', 'ytcp-thumbnail-badge'], row);
     const img = H.first(['img[src*="ytimg"]', 'img[src*="/vi/"]', 'img'], row);
     const hasEditDraft = !!H.byText(['ytcp-button', 'button', 'a'], 'edit\\s*draft', row);
     return { id, title, status: status || (hasEditDraft ? 'draft' : ''), date: dateText, duration: H.text(durEl), thumbnail: img ? img.src : '', draft: status === 'draft' || hasEditDraft };

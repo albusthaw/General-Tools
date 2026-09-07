@@ -246,6 +246,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == f"/channel/{CHANNEL}":
             return self._send(SHELL.format(title="Dashboard", body="<p style='padding:20px'>Channel dashboard</p>", script="").encode())
         if path.startswith("/channel/") and path.endswith("/videos/upload") or path.startswith("/playlist/"):
+            query = dict(part.split("=", 1) for part in urlparse(self.path).query.split("&") if "=" in part)
+            draft = STATE.find(query.get("udvid", "")) if query.get("d") == "ud" else None
+            if draft and draft["status"] == "draft":
+                body = WIZARD_BODY % {"title": draft["title"], "description": draft["description"]}
+                script = WIZARD_SCRIPT % {"video": json.dumps(draft), "channel": CHANNEL}
+                return self._send(SHELL.format(title="Draft - YouTube Studio", body=body, script=script).encode())
             videos = STATE.videos if path.startswith("/channel/") else [v for v in STATE.videos if "Recipes" in v["playlists"]]
             script = LIST_SCRIPT % {"page_size": STATE.page_size, "videos": json.dumps(videos)}
             return self._send(SHELL.format(title="Channel content - YouTube Studio", body=LIST_BODY, script=script).encode())

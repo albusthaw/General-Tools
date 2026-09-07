@@ -50,10 +50,20 @@ The program (pywebview, HTML and CSS) talks to a Chromium-based browser through 
 
 Element names for YouTube Studio live in `app/selectors.py`, each with several fall-backs and text-based searches. If YouTube changes its pages, that is the file to update.
 
+## Verified against the live YouTube Studio
+
+On 7 September 2026 the engine was run against a real channel with two freshly uploaded drafts:
+
+- reading the content list (video ids come from the thumbnail address, because draft rows carry no links);
+- opening a draft through its deep link (`…/videos/upload?d=ud&udvid=<id>`), renaming it, setting the audience and publishing it as Unlisted through the upload wizard;
+- opening a published video in the plain editor, renaming it and changing its visibility with the pop-up's Done button, then saving.
+
+Both runs finished with zero problems. Use the practice run on one or two videos first whenever YouTube has changed its pages; the activity log names any screen part that could not be found.
+
 ## Known limits
 
-- The live YouTube Studio pages could not be exercised during development (the test account required a phone confirmation at sign-in), so the engine was verified against the mock pages. Use the practice run on one or two videos first; the activity log names any screen part that could not be found.
-- Scheduling relies on YouTube's date and time pickers and is the most fragile step; if it fails, the video is left unchanged.
+- Scheduling relies on YouTube's date and time pickers and was not part of the live run; if it fails, the video is left unchanged.
+- Description, tags and playlist changes follow the same editor pattern but were exercised on the mock pages only.
 - Firefox windows cannot be controlled; use Chrome, Edge or Brave.
 - Window pictures and the browser-window picker are Windows only.
 
