@@ -13,12 +13,14 @@ STUDIO_URL = "https://studio.youtube.com/"
 ROW = ["ytcp-video-row"]
 ROW_TITLE = ["#video-title", "a#video-title", "a[href*='/video/']"]
 NEXT_PAGE = ["ytcp-table-footer #navigate-after", "#navigate-after", "ytcp-icon-button[aria-label*='Next']"]
+FOOTER = ["ytcp-table-footer", "#footer"]
 PAGE_SIZE_TRIGGER = [
     "ytcp-table-footer #page-size ytcp-dropdown-trigger",
+    "ytcp-table-footer ytcp-select#page-size #trigger",
     "ytcp-table-footer ytcp-dropdown-trigger",
     "#page-size ytcp-dropdown-trigger",
 ]
-PAGE_SIZE_ITEM = ["tp-yt-paper-item", "paper-item", "ytcp-text-menu tp-yt-paper-item"]
+PAGE_SIZE_ITEM = ["tp-yt-paper-item", "ytcp-text-menu tp-yt-paper-item", "tp-yt-paper-listbox tp-yt-paper-item", "paper-item"]
 EDIT_DRAFT_BUTTON = ["ytcp-button", "button", "a"]
 EDIT_DRAFT_TEXT = r"edit\s*draft"
 

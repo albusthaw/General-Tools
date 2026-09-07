@@ -2,13 +2,14 @@
 
 Every tool in this repository shares one look and one voice.
 
-## Look: glassmorphism
+## Look: white glassmorphism
 
-- Dark, calm background with soft moving colour blobs (an "aurora") behind everything.
-- Content sits on frosted glass panels: translucent white fill (about 7 to 12 percent), a thin light border, a large corner radius (about 20 px), a soft deep shadow and a backdrop blur of roughly 24 to 30 px.
-- One accent gradient for primary buttons and active states (violet to cyan in `YT Bulk Publish`). Danger actions use a warm red-orange gradient. Success, warning and error colours are green, amber and pink-red.
-- Rounded pill chips for filters and status, toggle switches for on/off choices, segmented controls for one-of-few choices.
-- Text uses the system font (Segoe UI on Windows). Headings are bold and short.
+- Light, calm background (near-white with a faint cool tint) with soft moving pastel colour blobs (an "aurora") behind everything: lavender, sky blue, blush and mint.
+- Content sits on frosted glass panels: translucent white fill (about 55 to 85 percent), a thin white border plus a very faint dark edge, a large corner radius (about 20 px), a soft shadow and a backdrop blur of roughly 22 to 28 px.
+- Text is deep navy (`#1b2140`) with softer navy tints for secondary text; never grey on grey. Keep small text at 12.5 px or larger and at least medium weight when it sits on glass.
+- One accent gradient for primary buttons and active states (violet to blue in `YT Bulk Publish`), with white button text. Danger actions use a warm red-orange gradient. Success, warning and error colours are green, amber and rose, always dark enough to read on white.
+- Rounded pill chips for filters and status (pastel fill, dark matching text), toggle switches for on/off choices, segmented controls for one-of-few choices.
+- Text uses the system font (Segoe UI Variable / Segoe UI on Windows). Headings are bold and short; body text is 14 px.
 - Animations are short (150 to 350 ms) and used for feedback, not decoration.
 - Custom title bar with the tool name, a step indicator and window controls. The title bar is the drag area.
 

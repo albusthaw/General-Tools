@@ -22,7 +22,7 @@ What it does:
 4. Renames titles with your own rules: change a word or phrase, remove text, add text at the start or end, number the videos, change letter case, or use an advanced pattern. A live preview shows every old and new title before anything is saved.
 5. Applies the changes one video at a time with a progress list, an activity log and a "practice run" mode that saves nothing.
 
-The interface uses a frosted-glass look and plain language throughout. The built program is placed in `YT Bulk Publish/Release/`.
+The interface uses a white frosted-glass look and plain language throughout. The built program is placed in `YT Bulk Publish/Release/`.
 
 See `YT Bulk Publish/README.md` for setup, building and known limits.
 

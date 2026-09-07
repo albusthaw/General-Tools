@@ -296,9 +296,12 @@ class Studio:
         raise StudioError("The video list did not appear. Make sure you are signed in to YouTube Studio.")
 
     def set_page_size(self, size: int = 50) -> bool:
+        """Switch the list footer to show `size` rows per page (10, 30 or 50)."""
         trigger = self.find(S.PAGE_SIZE_TRIGGER)
         if not trigger:
             return False
+        if re.fullmatch(rf"\s*{size}\s*", self.read(trigger) or ""):
+            return True
         try:
             self.click(trigger, "page size menu")
             self.pause(0.6)
@@ -308,13 +311,21 @@ class Studio:
                 return False
             self.click(item, "page size option")
             self.pause(1.2)
-            return True
+            self.wait_for_rows()
+            trigger = self.find(S.PAGE_SIZE_TRIGGER)
+            return bool(trigger) and bool(re.fullmatch(rf"\s*{size}\s*", self.read(trigger) or ""))
         except StudioError:
             return False
 
-    def list_videos(self, max_pages: int = 60) -> list[Video]:
+    def footer_text(self) -> str:
+        footer = self.find(S.FOOTER)
+        return " ".join((self.read(footer) or "").split()) if footer else ""
+
+    def list_videos(self, max_pages: int = 60, page_size: int | None = 50) -> list[Video]:
+        """Read every row, following the next-page button until it is disabled."""
         self.wait_for_rows()
-        self.set_page_size(50)
+        if page_size:
+            self.set_page_size(page_size)
         videos: list[Video] = []
         seen: set[str] = set()
         for page_number in range(max_pages):
