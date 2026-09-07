@@ -32,7 +32,16 @@ run.bat
 
 ## Build the program
 
-Double-click `build\build_release.bat`. The finished program appears as `Release\YT Bulk Publish.exe`. Building has to happen on Windows; see `Global instruction/release.md`.
+Two ways, both described in `Global instruction/release.md`:
+
+- **GitHub Actions**: run the workflow "Build YT Bulk Publish (Windows EXE)" from the Actions tab. It builds on a Windows runner, starts the program in check mode, and commits `Release\YT Bulk Publish.exe` to the branch.
+- **On Windows**: double-click `build\build_release.bat`. The finished program appears as `Release\YT Bulk Publish.exe`.
+
+Starting the program with `--check` loads every part without opening a window and writes `startup-check.txt` next to it; the build uses this to prove the EXE works.
+
+## Icons
+
+All icons are original drawings made for this program: the app icon (`build/icon.ico`, preview in `assets/app-icon.png`, drawn by `build/make_icon.py`) and the small interface icons, which are simple stroke shapes defined at the top of `app/ui/index.html`. No third-party icon sets or brand marks are used.
 
 ## Tests
 

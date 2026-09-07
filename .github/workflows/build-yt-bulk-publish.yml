@@ -1,0 +1,93 @@
+name: Build YT Bulk Publish (Windows EXE)
+
+# Builds the Windows program with PyInstaller on a Windows runner and commits
+# the result into "YT Bulk Publish/Release". It runs when the tool's source
+# changes, or by hand from the Actions tab. Its own EXE commit carries
+# "[skip ci]" so it never triggers itself.
+on:
+  workflow_dispatch:
+    inputs:
+      commit_exe:
+        description: "Commit the built EXE into the Release folder"
+        type: boolean
+        default: true
+  push:
+    branches: ["**"]
+    paths:
+      - "YT Bulk Publish/app/**"
+      - "YT Bulk Publish/build/**"
+      - "YT Bulk Publish/run.py"
+      - "YT Bulk Publish/requirements.txt"
+      - ".github/workflows/build-yt-bulk-publish.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-yt-bulk-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: YT Bulk Publish
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run the offline tests that need no browser
+        run: python -m unittest tests.test_rename -v
+
+      - name: Draw the icon
+        run: python build/make_icon.py
+
+      - name: Build the program
+        run: |
+          pyinstaller build/yt_bulk_publish.spec --distpath Release --workpath build/work --noconfirm --clean
+          Remove-Item -Recurse -Force build/work -ErrorAction SilentlyContinue
+          Get-ChildItem Release
+
+      - name: Start the built program in check mode
+        run: |
+          $exe = Join-Path (Get-Location) "Release/YT Bulk Publish.exe"
+          $proc = Start-Process -FilePath $exe -ArgumentList "--check" -PassThru -Wait
+          Write-Host "exit code: $($proc.ExitCode)"
+          if (Test-Path "Release/startup-check.txt") { Get-Content "Release/startup-check.txt" }
+          if ($proc.ExitCode -ne 0) { throw "The built program did not pass its start-up check." }
+
+      - name: Keep a copy as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YT-Bulk-Publish-windows
+          path: YT Bulk Publish/Release/YT Bulk Publish.exe
+          if-no-files-found: error
+
+      - name: Commit the EXE into the Release folder
+        if: ${{ github.event_name == 'push' || inputs.commit_exe }}
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          Remove-Item -Force "YT Bulk Publish/Release/startup-check.txt" -ErrorAction SilentlyContinue
+          git add "YT Bulk Publish/Release/YT Bulk Publish.exe"
+          if (git diff --cached --quiet) { Write-Host "The EXE did not change."; exit 0 }
+          git commit -m "Build YT Bulk Publish.exe (Windows, PyInstaller) [skip ci]"
+          # Other commits may have landed while the build ran; put the EXE commit on top of them.
+          git pull --rebase origin ${{ github.ref_name }}
+          git push origin HEAD:${{ github.ref_name }}

@@ -44,6 +44,9 @@ input, textarea, select { user-select: text; }
 button { font-family: inherit; }
 .hidden { display: none !important; }
 .muted { color: var(--ink-mute); }
+.ico { width: 16px; height: 16px; vertical-align: -3px; margin-right: 7px; flex-shrink: 0; }
+.ico.after { margin-right: 0; margin-left: 7px; }
+.btn.big .ico { width: 18px; height: 18px; vertical-align: -3px; }
 .pad { padding: 14px; }
 .spacer { flex: 1; }
 
