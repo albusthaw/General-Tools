@@ -1,9 +1,18 @@
 YT Bulk Publish - Release folder
 
-The program file "YT Bulk Publish.exe" is written into this folder by the build script.
+"YT Bulk Publish.exe" in this folder is the finished Windows program. It needs
+no installation: copy it anywhere and double-click it. Windows 10 or 11 with
+the Microsoft Edge WebView2 runtime (included with Windows) and Google Chrome,
+Microsoft Edge or Brave installed.
 
-To build it on Windows:
-  1. Install Python 3.10 or newer (tick "Add python.exe to PATH").
-  2. Double-click  build\build_release.bat  in the tool folder.
+How the file is produced:
+  - GitHub Actions: the workflow "Build YT Bulk Publish (Windows EXE)" builds it
+    on a Windows runner whenever the tool's source changes (or when started by
+    hand from the Actions tab) and commits the result here.
+  - On Windows: double-click  build\build_release.bat  in the tool folder.
 
-The build must run on Windows. See Global instruction\release.md for details.
+Starting the program with  --check  loads every part without opening a window
+and writes  startup-check.txt  next to it. The build uses this to prove the
+program works before the file is committed.
+
+See Global instruction\release.md for details.

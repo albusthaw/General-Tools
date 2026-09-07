@@ -88,4 +88,6 @@ jobs:
           git add "YT Bulk Publish/Release/YT Bulk Publish.exe"
           if (git diff --cached --quiet) { Write-Host "The EXE did not change."; exit 0 }
           git commit -m "Build YT Bulk Publish.exe (Windows, PyInstaller) [skip ci]"
+          # Other commits may have landed while the build ran; put the EXE commit on top of them.
+          git pull --rebase origin ${{ github.ref_name }}
           git push origin HEAD:${{ github.ref_name }}
