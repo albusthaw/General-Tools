@@ -6,9 +6,11 @@ Each tool has a `Release/` folder. The built program (for Windows tools, a singl
 
 ## Building a Windows program
 
-Windows programs are built with PyInstaller, on Windows. PyInstaller cannot make a Windows EXE from Linux or macOS, so building is a Windows-only step.
+Windows programs are built with PyInstaller, on Windows. PyInstaller cannot make a Windows EXE from Linux or macOS, so building is a Windows-only step. Two ways exist:
 
-For `YT Bulk Publish`:
+**On GitHub (no Windows machine needed).** The workflow `.github/workflows/build-yt-bulk-publish.yml` runs on a Windows runner. Start it from the repository's Actions tab ("Build YT Bulk Publish (Windows EXE)", choose the branch, Run workflow). It installs the packages, draws the icon, runs PyInstaller, starts the built program in check mode, keeps the EXE as a workflow artifact and, unless the "commit" option is switched off, commits `YT Bulk Publish/Release/YT Bulk Publish.exe` back to the same branch with `[skip ci]` in the message.
+
+**On a Windows computer.** For `YT Bulk Publish`:
 
 1. Install Python 3.10 or newer from python.org and tick "Add python.exe to PATH".
 2. Double-click `YT Bulk Publish\build\build_release.bat` (or run `python build\build_release.py` from the tool folder).

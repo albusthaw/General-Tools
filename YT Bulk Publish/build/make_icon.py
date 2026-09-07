@@ -35,6 +35,10 @@ def main() -> None:
     target = HERE / "icon.ico"
     images[-1].save(target, format="ICO", sizes=[(s, s) for s in sizes], append_images=images[:-1])
     print(f"Icon written to {target}")
+    assets = HERE.parent / "assets"
+    assets.mkdir(exist_ok=True)
+    images[-1].save(assets / "app-icon.png", format="PNG")
+    print(f"Preview written to {assets / 'app-icon.png'}")
 
 
 if __name__ == "__main__":
