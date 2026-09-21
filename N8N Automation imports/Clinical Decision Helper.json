@@ -1,0 +1,291 @@
+{
+  "name": "Clinical Decision Helper",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Clinical Decision Helper",
+        "formDescription": "Attach one or more clear photos or scans (lab reports, imaging reports, notes, ECGs, skin photos). The helper reads them, works out the most probable diagnosis with a confidence figure, lists differential diagnoses and drafts a management plan, then emails the report to you. It supports clinical judgement and does not replace it.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Clinical images",
+              "fieldType": "file",
+              "multipleFiles": true,
+              "acceptFileTypes": ".jpg, .jpeg, .png, .webp, .heic, .heif",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email address",
+              "fieldType": "email",
+              "placeholder": "Where to send the report (leave empty to use the default address)"
+            },
+            {
+              "fieldLabel": "Clinical notes and questions",
+              "fieldType": "textarea",
+              "placeholder": "Optional. Add age, sex, symptoms, history, medicines, and any specific question you want answered."
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {
+          "appendAttributionToForm": false,
+          "buttonLabel": "Analyse and email the report",
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "formSubmittedText": "Thank you. Your images are being read and the report is being written. It will arrive by email in a few minutes."
+            }
+          }
+        }
+      },
+      "id": "8a6e5b1c-7d2f-4c8a-9e1b-0f3a5c7d9e21",
+      "name": "Clinical form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "clinical-decision-helper"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect what the form sent: the uploaded images, the email address and the notes.\n// The form stores each uploaded file in its own binary field, so we list those\n// fields here and hand the list to the image reading step.\nconst item = $input.first();\nconst json = item.json || {};\nconst binary = item.binary || {};\n\nconst imageKeys = Object.keys(binary).filter((key) => {\n  const mime = String(binary[key].mimeType || '').toLowerCase();\n  return mime.startsWith('image/');\n});\n\nif (imageKeys.length === 0) {\n  throw new Error('No image was received from the form. Please attach at least one image and try again.');\n}\n\n// Keep the images in the order they were attached (field_0, field_1, ...).\nconst trailingNumber = (key) => {\n  const match = key.match(/_(\\d+)$/);\n  return match ? Number(match[1]) : 0;\n};\nimageKeys.sort((a, b) => trailingNumber(a) - trailingNumber(b) || a.localeCompare(b));\n\n// Read a form answer by trying the possible field names.\nconst pick = (names) => {\n  for (const name of names) {\n    const value = json[name];\n    if (value !== undefined && value !== null && String(value).trim() !== '') {\n      return String(value).trim();\n    }\n  }\n  return '';\n};\n\nconst email = pick(['Email address', 'email', 'Email']);\nconst notes = pick(['Clinical notes and questions', 'notes', 'Notes']);\n\nconst fileNames = imageKeys.map((key) => binary[key].fileName || key);\n\nreturn [{\n  json: {\n    binaryKeys: imageKeys.join(','),\n    imageCount: imageKeys.length,\n    fileNames,\n    email,\n    notes,\n    submittedAt: json.submittedAt || new Date().toISOString(),\n  },\n  binary,\n}];"
+      },
+      "id": "2b7c9d3e-4f5a-4b6c-8d7e-1a2b3c4d5e62",
+      "name": "Prepare images",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-3.8-flash",
+          "cachedResultName": "models/gemini-3.8-flash"
+        },
+        "text": "=You are a meticulous medical transcriptionist. You are given {{ $json.imageCount }} image(s) of clinical material, for example laboratory reports, imaging reports, prescriptions, clinical notes, ECG strips, or photographs of skin, wounds or other findings.\n\nYour only task is to extract everything that is written or shown in the images, exactly as it appears. Do not interpret, diagnose, summarise or add commentary.\n\nRules:\n1. Work through the images in order. Start each image with the heading \"IMAGE n\" (n = 1, 2, 3 ...).\n2. Transcribe all text word for word. Keep the original wording, abbreviations, numbers, decimals, units and symbols (for example <, >, +, -, H, L, *).\n3. Reproduce every laboratory result as a markdown table with the columns: Test | Result | Unit | Reference range | Flag. Copy the flag exactly as printed (for example H, L, HIGH, LOW, *, or leave blank). Never round or convert values.\n4. Keep all dates, times, specimen types, collection and report times, laboratory comments and footnotes.\n5. Keep age, sex, weight, height and clinical details. Replace patient names, hospital numbers, NHS numbers, addresses and phone numbers with [REDACTED].\n6. If a word or number cannot be read, write [unclear] in its place. If it is only partly readable, give your best reading followed by (?).\n7. For images that are mostly pictures (photographs, ECG traces, X-rays, scans), give an objective description of what is visible: location, size, colour, shape, pattern, measurements, printed labels and any printed report text. Do not name a diagnosis.\n8. Output plain text with markdown tables only. No introduction, no summary, no advice.",
+        "inputType": "binary",
+        "binaryPropertyName": "={{ $json.binaryKeys }}",
+        "simplify": true,
+        "options": {
+          "maxOutputTokens": 8192
+        }
+      },
+      "id": "3c8d0e4f-5a6b-4c7d-9e8f-2b3c4d5e6f73",
+      "name": "Read images (Gemini)",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pull the text Gemini produced (the node can return it in several shapes)\n// and build the instructions for the reasoning model.\nconst partsToText = (parts) => (parts || []).map((p) => (p && typeof p.text === 'string') ? p.text : '').join('\\n');\n\nconst readText = (data) => {\n  if (!data) return '';\n  if (typeof data === 'string') return data;\n  if (typeof data.text === 'string') return data.text;\n  if (typeof data.output === 'string') return data.output;\n  if (data.content && Array.isArray(data.content.parts)) return partsToText(data.content.parts);\n  if (Array.isArray(data.candidates)) {\n    return data.candidates.map((c) => partsToText(c && c.content ? c.content.parts : [])).join('\\n');\n  }\n  if (Array.isArray(data.parts)) return partsToText(data.parts);\n  if (data.response) return readText(data.response);\n  return JSON.stringify(data, null, 2);\n};\n\nconst transcript = $input.all().map((item) => readText(item.json)).join('\\n\\n').trim();\nif (!transcript) {\n  throw new Error('The image reading step returned no text. Please check that the images are clear and try again.');\n}\n\nconst form = $('Prepare images').first().json;\nconst notes = form.notes || '(none provided)';\n\nconst schema = `{\n  \"case_summary\": \"2 to 4 sentences summarising the patient and the key data.\",\n  \"key_findings\": [\"Each abnormal or important finding as one short line, with the value and reference range where available.\"],\n  \"probable_diagnosis\": {\n    \"name\": \"Single most likely diagnosis\",\n    \"confidence_percent\": 0,\n    \"rationale\": \"2 to 4 sentences: which findings support it and which argue against it.\"\n  },\n  \"differential_diagnoses\": [\n    {\n      \"name\": \"Alternative diagnosis\",\n      \"confidence_percent\": 0,\n      \"rationale\": \"1 to 2 sentences on why it is considered.\",\n      \"distinguishing_features\": \"1 sentence on what would confirm or exclude it.\"\n    }\n  ],\n  \"management_plan\": {\n    \"immediate_actions\": [\"Steps needed now, including urgency and any escalation.\"],\n    \"investigations\": [\"Further tests, with a brief reason for each.\"],\n    \"treatment\": [\"Treatment options with usual adult doses where appropriate, or 'as per local guideline'.\"],\n    \"monitoring_and_follow_up\": [\"What to monitor, how often, and when to review.\"],\n    \"red_flags\": [\"Warning signs that need urgent reassessment.\"]\n  },\n  \"data_gaps\": [\"Missing information or unreadable values that limit the assessment.\"]\n}`;\n\nconst userPrompt = `You are an experienced hospital physician acting as a clinical decision support assistant for a qualified clinician. Use British English spelling and UK clinical conventions.\n\nINPUT 1 - TRANSCRIPT OF THE UPLOADED IMAGES (extracted by an image reading model; [unclear] marks unreadable text):\n<<<TRANSCRIPT\n${transcript}\nTRANSCRIPT>>>\n\nINPUT 2 - NOTES AND QUESTIONS FROM THE CLINICIAN:\n<<<NOTES\n${notes}\nNOTES>>>\n\nYOUR TASK\n1. Read every value in the transcript. Treat the reference ranges printed in the transcript as authoritative when present.\n2. Formulate the single most probable diagnosis with a calibrated confidence percentage.\n3. List 3 to 5 differential diagnoses, ordered from most to least likely, each with its own confidence percentage, a short rationale and the feature that would distinguish it. The probable diagnosis plus all differentials should add up to no more than 100 percent.\n4. Write a management plan that a clinician can act on today.\n5. Answer any specific question in the clinician's notes inside the relevant section.\n6. Never invent values that are not in the transcript. If the data are insufficient for a confident diagnosis, say so in the rationale, keep the confidence low, and list what is missing under data_gaps.\n\nOUTPUT FORMAT - STRICT\nReturn ONLY one JSON object, with no markdown fences and no text before or after it. Use exactly these keys and value types:\n${schema}\n\nStyle rules for every string: plain professional English, short sentences, no emojis, no markdown, no bullet characters inside strings, and confidence_percent must be a whole number between 0 and 100.`;\n\nreturn [{\n  json: {\n    userPrompt,\n    transcript,\n    email: form.email || '',\n    notes: form.notes || '',\n    imageCount: form.imageCount,\n    fileNames: form.fileNames,\n    binaryKeys: form.binaryKeys,\n    submittedAt: form.submittedAt,\n  },\n}];"
+      },
+      "id": "4d9e1f5a-6b7c-4d8e-8f9a-3c4d5e6f7a84",
+      "name": "Build clinical prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userPrompt }}",
+        "hasOutputParser": false,
+        "messages": {
+          "messageValues": [
+            {
+              "type": "SystemMessagePromptTemplate",
+              "message": "You are a careful, evidence-based clinical decision support assistant working for a qualified clinician. You always answer with a single valid JSON object that follows the schema given in the user message, with no markdown fences and no extra text. You never invent data that is not present in the input."
+            }
+          ]
+        }
+      },
+      "id": "5e0f2a6b-7c8d-4e9f-9a0b-4d5e6f7a8b95",
+      "name": "Clinical reasoning (DeepSeek)",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "deepseek-v4-pro",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "6f1a3b7c-8d9e-4f0a-8b1c-5e6f7a8b9ca6",
+      "name": "DeepSeek Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        1060,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn the reasoning model's JSON answer into an email with one fixed layout,\n// so every report looks the same whatever the model wrote.\nconst DEFAULT_EMAIL = 'minthantthaw@gmail.com';\nconst REASONING_MODEL = 'deepseek-v4-pro';\nconst READING_MODEL = 'models/gemini-3.8-flash';\n\nconst answer = $input.first().json;\nconst context = $('Build clinical prompt').first().json;\nconst form = $('Prepare images').first();\n\n// --- read the model output ------------------------------------------------\nlet raw = '';\nif (typeof answer.text === 'string') raw = answer.text;\nelse if (typeof answer.output === 'string') raw = answer.output;\nelse if (answer.response && typeof answer.response.text === 'string') raw = answer.response.text;\nelse if (answer && typeof answer === 'object' && answer.probable_diagnosis) raw = JSON.stringify(answer);\nelse raw = JSON.stringify(answer);\n\nconst parseReport = (text) => {\n  let cleaned = String(text).replace(/```(?:json)?/gi, '').trim();\n  const first = cleaned.indexOf('{');\n  const last = cleaned.lastIndexOf('}');\n  if (first === -1 || last === -1) return null;\n  cleaned = cleaned.slice(first, last + 1);\n  try {\n    return JSON.parse(cleaned);\n  } catch (error) {\n    return null;\n  }\n};\n\nconst report = parseReport(raw);\n\n// --- small helpers ----------------------------------------------------------\nconst esc = (value) => String(value === undefined || value === null ? '' : value)\n  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n\nconst asList = (value) => {\n  if (Array.isArray(value)) return value.map((v) => String(v)).filter((v) => v.trim() !== '');\n  if (value === undefined || value === null || String(value).trim() === '') return [];\n  return [String(value)];\n};\n\nconst clampPercent = (value) => {\n  const number = Math.round(Number(value));\n  if (Number.isNaN(number)) return 0;\n  return Math.max(0, Math.min(100, number));\n};\n\nconst confidenceColour = (percent) => {\n  if (percent >= 70) return '#1e8e5a';\n  if (percent >= 40) return '#c98a00';\n  return '#c2455a';\n};\n\n// --- fixed style tokens (kept in one place so the look never drifts) ----------\nconst FONT = \"'Segoe UI Variable','Segoe UI',Roboto,Helvetica,Arial,sans-serif\";\nconst NAVY = '#1b2140';\nconst NAVY_SOFT = '#4a5178';\nconst LINE = '#e3e6f2';\nconst BG = '#f4f5fb';\nconst ACCENT = '#5b5fe6';\n\nconst h2 = (title) => `<h2 style=\"margin:28px 0 10px;font-family:${FONT};font-size:17px;font-weight:700;color:${NAVY};letter-spacing:.2px;\">${esc(title)}</h2>`;\nconst h3 = (title) => `<h3 style=\"margin:16px 0 6px;font-family:${FONT};font-size:14px;font-weight:700;color:${NAVY};\">${esc(title)}</h3>`;\nconst p = (text) => `<p style=\"margin:0 0 10px;font-family:${FONT};font-size:14px;line-height:1.55;color:${NAVY};\">${esc(text)}</p>`;\nconst ul = (items, emptyText) => {\n  const list = asList(items);\n  if (list.length === 0) return p(emptyText || 'None stated.');\n  return `<ul style=\"margin:0 0 10px 0;padding-left:22px;\">${list.map((item) => `<li style=\"margin:0 0 6px;font-family:${FONT};font-size:14px;line-height:1.5;color:${NAVY};\">${esc(item)}</li>`).join('')}</ul>`;\n};\nconst chip = (text, colour) => `<span style=\"display:inline-block;padding:4px 12px;border-radius:999px;background:${colour}1a;color:${colour};font-family:${FONT};font-size:13px;font-weight:700;\">${esc(text)}</span>`;\nconst bar = (percent, colour) => `<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"margin:8px 0 0;\"><tr><td style=\"background:${LINE};border-radius:6px;height:8px;\"><div style=\"width:${percent}%;max-width:100%;height:8px;border-radius:6px;background:${colour};\"></div></td></tr></table>`;\n\n// --- build the body ---------------------------------------------------------\nconst submitted = new Date(context.submittedAt || Date.now());\nconst dateText = submitted.toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short' });\nconst fileNames = asList(context.fileNames);\n\nlet body = '';\nlet probableName = '';\n\nif (report && report.probable_diagnosis) {\n  const probable = report.probable_diagnosis || {};\n  const probablePercent = clampPercent(probable.confidence_percent);\n  const probableColour = confidenceColour(probablePercent);\n  probableName = String(probable.name || '').trim();\n  const plan = report.management_plan || {};\n  const differentials = Array.isArray(report.differential_diagnoses) ? report.differential_diagnoses : [];\n\n  body += h2('1. Case summary');\n  body += p(report.case_summary || 'No summary was produced.');\n\n  body += h2('2. Key findings');\n  body += ul(report.key_findings, 'No abnormal findings were listed.');\n\n  body += h2('3. Probable diagnosis');\n  body += `<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"border:1px solid ${LINE};border-radius:14px;background:#ffffff;\"><tr><td style=\"padding:16px 18px;\">`\n    + `<div style=\"font-family:${FONT};font-size:18px;font-weight:700;color:${NAVY};margin-bottom:8px;\">${esc(probableName || 'Not stated')}</div>`\n    + chip(`${probablePercent}% confidence`, probableColour)\n    + bar(probablePercent, probableColour)\n    + `<div style=\"margin-top:12px;\">${p(probable.rationale || 'No rationale was given.')}</div>`\n    + `</td></tr></table>`;\n\n  body += h2('4. Differential diagnoses');\n  if (differentials.length === 0) {\n    body += p('No differential diagnoses were listed.');\n  } else {\n    body += `<table cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"border-collapse:separate;border-spacing:0;border:1px solid ${LINE};border-radius:14px;overflow:hidden;background:#ffffff;\">`\n      + `<tr style=\"background:${BG};\">`\n      + `<th align=\"left\" style=\"padding:10px 12px;font-family:${FONT};font-size:12.5px;font-weight:700;color:${NAVY_SOFT};text-transform:uppercase;letter-spacing:.4px;\">Diagnosis</th>`\n      + `<th align=\"left\" style=\"padding:10px 12px;font-family:${FONT};font-size:12.5px;font-weight:700;color:${NAVY_SOFT};text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;\">Confidence</th>`\n      + `<th align=\"left\" style=\"padding:10px 12px;font-family:${FONT};font-size:12.5px;font-weight:700;color:${NAVY_SOFT};text-transform:uppercase;letter-spacing:.4px;\">Why considered</th>`\n      + `<th align=\"left\" style=\"padding:10px 12px;font-family:${FONT};font-size:12.5px;font-weight:700;color:${NAVY_SOFT};text-transform:uppercase;letter-spacing:.4px;\">How to confirm or exclude</th>`\n      + `</tr>`;\n    differentials.forEach((d, index) => {\n      const percent = clampPercent(d.confidence_percent);\n      const colour = confidenceColour(percent);\n      const rowBg = index % 2 === 0 ? '#ffffff' : '#fafbfe';\n      body += `<tr style=\"background:${rowBg};\">`\n        + `<td valign=\"top\" style=\"padding:10px 12px;border-top:1px solid ${LINE};font-family:${FONT};font-size:14px;font-weight:700;color:${NAVY};\">${esc(d.name || '')}</td>`\n        + `<td valign=\"top\" style=\"padding:10px 12px;border-top:1px solid ${LINE};white-space:nowrap;\">${chip(`${percent}%`, colour)}</td>`\n        + `<td valign=\"top\" style=\"padding:10px 12px;border-top:1px solid ${LINE};font-family:${FONT};font-size:13.5px;line-height:1.5;color:${NAVY};\">${esc(d.rationale || '')}</td>`\n        + `<td valign=\"top\" style=\"padding:10px 12px;border-top:1px solid ${LINE};font-family:${FONT};font-size:13.5px;line-height:1.5;color:${NAVY};\">${esc(d.distinguishing_features || '')}</td>`\n        + `</tr>`;\n    });\n    body += `</table>`;\n  }\n\n  body += h2('5. Management plan');\n  body += h3('Immediate actions');\n  body += ul(plan.immediate_actions);\n  body += h3('Investigations');\n  body += ul(plan.investigations);\n  body += h3('Treatment');\n  body += ul(plan.treatment);\n  body += h3('Monitoring and follow-up');\n  body += ul(plan.monitoring_and_follow_up);\n  body += h3('Red flags');\n  body += ul(plan.red_flags);\n\n  body += h2('6. Data gaps and limitations');\n  body += ul(report.data_gaps, 'No gaps were reported.');\n} else {\n  // The model did not return usable JSON: show its answer as written so nothing is lost.\n  body += h2('Assessment');\n  body += p('The reasoning model did not return its answer in the expected structure, so the full reply is shown below as written.');\n  body += `<pre style=\"white-space:pre-wrap;word-wrap:break-word;margin:0;padding:14px 16px;border:1px solid ${LINE};border-radius:14px;background:#ffffff;font-family:${FONT};font-size:13.5px;line-height:1.5;color:${NAVY};\">${esc(raw)}</pre>`;\n}\n\nbody += h2('Clinician notes and questions');\nbody += p(context.notes && context.notes.trim() !== '' ? context.notes : 'No notes were entered.');\n\nbody += h2('Appendix: text read from the images');\nbody += p(`Read by ${READING_MODEL.replace('models/', '')} from ${context.imageCount} image(s)${fileNames.length ? ': ' + fileNames.join(', ') : ''}. The original images are attached to this email.`);\nbody += `<pre style=\"white-space:pre-wrap;word-wrap:break-word;margin:0;padding:14px 16px;border:1px solid ${LINE};border-radius:14px;background:#ffffff;font-family:'Cascadia Mono','Consolas','Courier New',monospace;font-size:12.5px;line-height:1.5;color:${NAVY};\">${esc(context.transcript)}</pre>`;\n\nconst html = `<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Clinical decision support report</title></head>\n<body style=\"margin:0;padding:0;background:${BG};\">\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"background:${BG};padding:24px 12px;\">\n<tr><td align=\"center\">\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"720\" style=\"max-width:720px;width:100%;background:#ffffff;border:1px solid ${LINE};border-radius:20px;box-shadow:0 12px 32px rgba(27,33,64,0.08);\">\n<tr><td style=\"padding:26px 30px 18px;border-bottom:1px solid ${LINE};background:${ACCENT};background-image:linear-gradient(135deg,#7b61ff,#4f8dff);border-radius:20px 20px 0 0;\">\n  <div style=\"font-family:${FONT};font-size:12.5px;font-weight:600;color:#e9ecff;letter-spacing:.6px;text-transform:uppercase;\">Clinical decision helper</div>\n  <div style=\"font-family:${FONT};font-size:22px;font-weight:700;color:#ffffff;margin-top:6px;\">Clinical decision support report</div>\n  <div style=\"font-family:${FONT};font-size:13px;font-weight:500;color:#e9ecff;margin-top:6px;\">${esc(dateText)} &nbsp;&middot;&nbsp; ${esc(String(context.imageCount))} image(s) reviewed</div>\n</td></tr>\n<tr><td style=\"padding:8px 30px 30px;\">\n${body}\n</td></tr>\n<tr><td style=\"padding:16px 30px 22px;border-top:1px solid ${LINE};background:${BG};border-radius:0 0 20px 20px;\">\n  <p style=\"margin:0;font-family:${FONT};font-size:12.5px;font-weight:500;line-height:1.5;color:${NAVY_SOFT};\">This report was generated automatically to support, not replace, clinical judgement. It has not been reviewed by a clinician and may contain reading or reasoning errors. Verify every value against the original documents and follow local guidelines. Images read by ${esc(READING_MODEL.replace('models/', ''))}; reasoning by ${esc(REASONING_MODEL)}.</p>\n</td></tr>\n</table>\n</td></tr>\n</table>\n</body>\n</html>`;\n\n// --- recipient and subject ----------------------------------------------------\nconst typedEmail = String(context.email || '').trim();\nconst looksLikeEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(typedEmail);\nconst recipient = looksLikeEmail ? typedEmail : DEFAULT_EMAIL;\n\nconst subjectDate = submitted.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });\nconst subject = probableName\n  ? `Clinical decision support report: ${probableName} (${subjectDate})`\n  : `Clinical decision support report (${subjectDate})`;\n\nreturn [{\n  json: {\n    recipient,\n    subject,\n    html,\n    attachmentKeys: context.binaryKeys,\n    probableDiagnosis: probableName,\n    structuredReport: report,\n  },\n  binary: form.binary || {},\n}];"
+      },
+      "id": "7a2b4c8d-9e0f-4a1b-9c2d-6f7a8b9c0db7",
+      "name": "Build report email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.recipient }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Clinical Decision Helper",
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "={{ $json.attachmentKeys }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "8b3c5d9e-0f1a-4b2c-8d3e-7a8b9c0d1ec8",
+      "name": "Send report (Gmail)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1660,
+        0
+      ],
+      "webhookId": "clinical-decision-helper-gmail"
+    },
+    {
+      "parameters": {
+        "content": "## Clinical Decision Helper\n\n**Flow:** form → list images → Gemini reads every image → build prompt → DeepSeek reasons → fixed-layout email → Gmail.\n\n**After import:** open the Gemini, DeepSeek and Gmail nodes and pick your existing credentials. Then publish the workflow and open the form URL from the first node.\n\n**Models:** image reading uses `gemini-3.8-flash` (change to `gemini-3.5-flash-lite` for the lowest cost). Reasoning uses `deepseek-v4-pro` (change to `deepseek-flash` to save cost).\n\n**Default recipient:** minthantthaw@gmail.com (set in the *Build report email* node).",
+        "height": 340,
+        "width": 520,
+        "color": 6
+      },
+      "id": "9c4d6e0f-1a2b-4c3d-9e4f-8b9c0d1e2fd9",
+      "name": "How this works",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -400
+      ]
+    }
+  ],
+  "connections": {
+    "Clinical form": {
+      "main": [
+        [
+          {
+            "node": "Prepare images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare images": {
+      "main": [
+        [
+          {
+            "node": "Read images (Gemini)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read images (Gemini)": {
+      "main": [
+        [
+          {
+            "node": "Build clinical prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build clinical prompt": {
+      "main": [
+        [
+          {
+            "node": "Clinical reasoning (DeepSeek)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Clinical reasoning (DeepSeek)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clinical reasoning (DeepSeek)": {
+      "main": [
+        [
+          {
+            "node": "Build report email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build report email": {
+      "main": [
+        [
+          {
+            "node": "Send report (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
