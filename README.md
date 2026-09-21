@@ -7,6 +7,7 @@ A growing collection of small, practical desktop tools. Each tool lives in its o
 | Tool | Folder | What it does |
 | --- | --- | --- |
 | YouTube Bulk Publisher | `YT Bulk Publish/` | Publish, rename and update many YouTube Studio videos in one go. |
+| N8N Automation imports | `N8N Automation imports/` | Importable n8n workflows, starting with a clinical decision helper that reads clinical images and emails a report. |
 
 More tools will be added over time.
 
@@ -32,5 +33,6 @@ See `YT Bulk Publish/README.md` for setup, building and known limits.
 General-Tools/
 ├── CLAUDE.md                 short pointer to the Global instruction folder
 ├── Global instruction/       working rules: claude.md, agent.md, design.md, release.md, version control.md
-└── YT Bulk Publish/          the first tool
+├── YT Bulk Publish/          the first tool
+└── N8N Automation imports/   importable n8n workflow files
 ```
