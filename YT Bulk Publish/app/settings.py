@@ -20,7 +20,7 @@ import threading
 from pathlib import Path
 
 APP_NAME = "YT Bulk Publish"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 
 def _documents_folder() -> Path:

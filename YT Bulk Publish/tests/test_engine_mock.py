@@ -217,6 +217,72 @@ class MockStudioTest(unittest.TestCase):
         self.assertEqual(progress["items"][1]["state"], "skipped")
         self.assertIn("stopped early", progress["summary"])
 
+    # ---- behaviour of the live site -------------------------------------------
+    def use_live_behaviour(self):
+        """The live Studio keeps the finished upload window on the page, hidden."""
+        urllib.request.urlopen(self.base_url + "api/real_studio?on=1").read()
+
+    def test_10_publish_draft_does_not_wait_for_hidden_window(self):
+        self.use_live_behaviour()
+        video = Video(id="aB3dE5fG7hI", title="Bulk Test 1", status="draft", draft=True)
+        started = time.time()
+        result = self.studio.apply(video, Changes(visibility="unlisted", audience="not_for_kids"))
+        took = time.time() - started
+        self.assertIn("published as unlisted", result.lower())
+        self.assertEqual(self.state()["videos"][0]["status"], "unlisted")
+        self.assertEqual(len(self.state()["publishes"]), 1)
+        # Waiting for the hidden window to leave the page used to add about 40 seconds.
+        self.assertLess(took, 15, f"publishing one draft took {took:.1f} s")
+
+    def test_11_batch_of_drafts_with_live_behaviour(self):
+        self.use_live_behaviour()
+        log = ActivityLog(Path(tempfile.mkdtemp(prefix="ytbp-log-")))
+        runner = BatchRunner(lambda: self.studio, log)
+        videos = [
+            {"id": "aB3dE5fG7hI", "title": "Bulk Test 1", "status": "draft", "draft": True},
+            {"id": "jK9lM1nO3pQ", "title": "Bulk Test 2", "status": "draft", "draft": True},
+        ]
+        started = time.time()
+        runner.start(videos, [{"kind": "visibility", "mode": "public"}, {"kind": "audience", "value": "not_for_kids"}], pause=0)
+        deadline = time.time() + 90
+        while time.time() < deadline and runner.progress()["running"]:
+            time.sleep(0.3)
+        progress = runner.progress()
+        self.assertEqual([i["state"] for i in progress["items"]], ["done", "done"], progress["items"])
+        self.assertEqual([v["status"] for v in self.state()["videos"][:2]], ["public", "public"])
+        self.assertLess(time.time() - started, 30)
+
+    def test_12_unsaved_changes_do_not_block_the_next_video(self):
+        # A video that failed half way leaves unsaved changes behind; the page then asks
+        # "Leave site?". That question must not freeze the run.
+        self.studio.goto(self.base_url + "video/rS5tU7vW9xY/edit")
+        box = self.studio.wait_for(["#title-textarea #textbox"])
+        self.studio.type_into(box, "Half finished title")
+        self.log_lines.clear()
+        started = time.time()
+        self.studio.goto(self.base_url + "video/zA1bC3dE5fG/edit")
+        self.assertLess(time.time() - started, 10)
+        self.assertIn("/video/zA1bC3dE5fG/edit", self.studio.url())
+        self.assertTrue(any("unsaved changes" in line for line in self.log_lines), self.log_lines)
+        self.assertEqual(self.state()["saves"], [])
+
+    def test_14_publish_message_over_a_showing_upload_window(self):
+        # Some live runs show "Video published" while the upload window is still
+        # visible underneath; the message alone proves the publish.
+        urllib.request.urlopen(self.base_url + "api/real_studio?on=1&under=1").read()
+        video = Video(id="jK9lM1nO3pQ", title="Bulk Test 2", status="draft", draft=True)
+        started = time.time()
+        result = self.studio.apply(video, Changes(visibility="private", audience="not_for_kids"))
+        self.assertIn("published as private", result.lower())
+        self.assertEqual(self.state()["videos"][1]["status"], "private")
+        self.assertLess(time.time() - started, 15)
+
+    def test_13_current_page_falls_back_to_channel_list(self):
+        self.studio.goto(self.base_url)  # the dashboard has no video list
+        self.assertFalse(self.studio.current_page_is_list())
+        self.studio.open_list("channel")
+        self.assertTrue(self.studio.current_page_is_list())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

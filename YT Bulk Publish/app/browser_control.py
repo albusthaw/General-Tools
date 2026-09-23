@@ -4,16 +4,20 @@ A browser can only be controlled when it was started with a remote-control
 port. This module figures out whether the window the user picked already has
 one, and if not, starts a browser (same brand when possible) with a profile
 kept in the tool's own folder so the sign-in only has to happen once.
+
+Everything here has to answer quickly: the interface waits on these calls, so
+ports are looked up from the browser process itself instead of being guessed,
+and every network check uses a short time limit.
 """
 from __future__ import annotations
 
 import os
 import re
 import shlex
-import socket
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -58,7 +62,19 @@ KNOWN_BROWSERS = {
 }
 
 STUDIO_URL = "https://studio.youtube.com/"
+# Ports people commonly use for remote control. Only tried when nothing better is known.
 PROBE_PORTS = tuple(range(9222, 9232))
+# Time limit for one "is a browser listening here?" check. Local answers take a few
+# milliseconds; a closed port on Windows can otherwise hang for about two seconds.
+PORT_CHECK_TIMEOUT = 0.6
+
+
+# Browsers started by this program (kept so their process handles stay valid).
+_LAUNCHED: list[subprocess.Popen] = []
+
+
+class BrowserBusyError(RuntimeError):
+    """The tool's own browser profile is open in a browser that cannot be controlled."""
 
 
 @dataclass
@@ -92,6 +108,15 @@ def _flag_value(cmdline: list[str], flag: str) -> str:
     return ""
 
 
+def same_path(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    try:
+        return os.path.normcase(os.path.abspath(a)).rstrip("\\/") == os.path.normcase(os.path.abspath(b)).rstrip("\\/")
+    except (TypeError, ValueError):
+        return False
+
+
 def inspect_pid(pid: int) -> BrowserProcess | None:
     """Describe the process that owns a window (None if it is not a known browser)."""
     try:
@@ -111,25 +136,67 @@ def inspect_pid(pid: int) -> BrowserProcess | None:
     )
     info.profile_dir = _flag_value(cmdline, "profile-directory") or "Default"
     port = _flag_value(cmdline, "remote-debugging-port")
-    if port.isdigit():
+    if port.isdigit() and int(port) > 0:
         info.debug_port = int(port)
     return info
 
 
-def _port_from_active_file(user_data_dir: str) -> int | None:
+def _port_from_active_file(user_data_dir: str | Path) -> int | None:
     """Chromium writes the live remote-control port into DevToolsActivePort."""
     if not user_data_dir:
         return None
     path = Path(user_data_dir) / "DevToolsActivePort"
     try:
         first_line = path.read_text(encoding="utf-8", errors="ignore").splitlines()[0].strip()
-        return int(first_line) if first_line.isdigit() else None
+        return int(first_line) if first_line.isdigit() and int(first_line) > 0 else None
     except (OSError, IndexError, ValueError):
         return None
 
 
-def find_endpoint(process: BrowserProcess | None) -> BrowserEndpoint | None:
-    """Return a working remote-control endpoint for this browser, if there is one."""
+def listening_ports(pid: int) -> list[int] | None:
+    """Local TCP ports a process listens on, or None when the system does not say."""
+    try:
+        import psutil
+
+        proc = psutil.Process(int(pid))
+        getter = getattr(proc, "net_connections", None) or proc.connections
+        connections = getter(kind="tcp")
+    except Exception:  # noqa: BLE001
+        return None
+    ports = set()
+    for conn in connections:
+        address = getattr(conn, "laddr", None)
+        if conn.status == "LISTEN" and address and address.ip in ("127.0.0.1", "::1", "0.0.0.0", "::"):
+            ports.add(int(address.port))
+    return sorted(ports)
+
+
+def _first_alive(ports: list[int]) -> BrowserEndpoint | None:
+    """Check several ports at the same time and return the first one (in order) that answers."""
+    ordered: list[int] = []
+    for port in ports:
+        if port and port not in ordered:
+            ordered.append(int(port))
+    if not ordered:
+        return None
+    if len(ordered) == 1:
+        endpoint = BrowserEndpoint(port=ordered[0])
+        return endpoint if endpoint.is_alive(timeout=PORT_CHECK_TIMEOUT) else None
+    with ThreadPoolExecutor(max_workers=min(8, len(ordered))) as pool:
+        answers = list(pool.map(lambda p: BrowserEndpoint(port=p).is_alive(timeout=PORT_CHECK_TIMEOUT), ordered))
+    for port, alive in zip(ordered, answers):
+        if alive:
+            return BrowserEndpoint(port=port)
+    return None
+
+
+def find_endpoint(process: BrowserProcess | None, try_common_ports: bool = False) -> BrowserEndpoint | None:
+    """Return a working remote-control endpoint for this browser process, if it has one.
+
+    The port comes from the browser's own start-up options, its DevToolsActivePort
+    file, or the ports the process is listening on. Common ports are only tried
+    when asked, because they may belong to a different browser.
+    """
     candidates: list[int] = []
     if process:
         if process.debug_port:
@@ -137,25 +204,63 @@ def find_endpoint(process: BrowserProcess | None) -> BrowserEndpoint | None:
         file_port = _port_from_active_file(process.user_data_dir)
         if file_port:
             candidates.append(file_port)
-    candidates.extend(p for p in PROBE_PORTS if p not in candidates)
-    for port in candidates:
-        endpoint = BrowserEndpoint(port=port)
-        if endpoint.is_alive(timeout=0.8):
+        listening = listening_ports(process.pid)
+        if listening is not None:
+            # The system told us exactly which ports this browser has open:
+            # only those can be its remote-control port.
+            candidates = [p for p in candidates if p in listening] + [p for p in listening if p not in candidates]
+    if try_common_ports:
+        candidates.extend(p for p in PROBE_PORTS if p not in candidates)
+    return _first_alive(candidates)
+
+
+def profile_processes(profile_folder: str | Path) -> list:
+    """Main browser processes that are using the given profile folder."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    found = []
+    browser_names = set(KNOWN_BROWSERS) | {Path(name).stem for name in KNOWN_BROWSERS} | {"chrome", "chromium", "chromium-browser"}
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            if str(proc.info.get("name") or "").lower() not in browser_names:
+                continue  # reading every program's start-up options is slow on Windows
+            proc.info["cmdline"] = proc.cmdline()
+            cmdline = proc.info.get("cmdline") or []
+            if any(part.startswith("--type=") for part in cmdline):
+                continue  # helper processes (tabs, GPU) follow the main one
+            if same_path(_flag_value(cmdline, "user-data-dir"), str(profile_folder)):
+                found.append(proc)
+        except Exception:  # noqa: BLE001
+            continue
+    return found
+
+
+def find_profile_endpoint(profile_folder: str | Path) -> BrowserEndpoint | None:
+    """Return the remote-control endpoint of a browser already running with this profile."""
+    file_port = _port_from_active_file(profile_folder)
+    try:
+        import psutil  # noqa: F401
+    except ImportError:
+        return _first_alive([file_port or 0])
+    # The port file can be left behind by a browser that has closed, so it only
+    # counts while a browser is really running with this profile.
+    for proc in profile_processes(profile_folder):
+        cmdline = proc.info.get("cmdline") or []
+        ports: list[int] = []
+        flag = _flag_value(cmdline, "remote-debugging-port")
+        if flag.isdigit() and int(flag) > 0:
+            ports.append(int(flag))
+        if file_port:
+            ports.append(file_port)
+        listening = listening_ports(proc.pid)
+        if listening is not None:
+            ports = [p for p in ports if p in listening] + [p for p in listening if p not in ports]
+        endpoint = _first_alive(ports)
+        if endpoint:
             return endpoint
     return None
-
-
-def free_port(preferred: int = 9222) -> int:
-    for port in [preferred, *PROBE_PORTS]:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            try:
-                sock.bind(("127.0.0.1", port))
-                return port
-            except OSError:
-                continue
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
 
 
 def find_browser_executable(prefer_exe: str = "") -> str:
@@ -193,71 +298,138 @@ def launch_controlled_browser(
     exe_path: str,
     profile_folder: str | Path,
     url: str = STUDIO_URL,
-    port: int | None = None,
-    wait_seconds: float = 25.0,
+    port: int = 0,
+    wait_seconds: float = 30.0,
     profile_directory: str = "",
+    extra_args: list[str] | tuple[str, ...] = (),
 ) -> BrowserEndpoint:
-    """Start a browser with remote control switched on and wait until it answers."""
+    """Start a browser with remote control switched on and wait until it answers.
+
+    With port 0 the browser picks a free port itself and writes it into the
+    profile's DevToolsActivePort file, so a port already taken by another program
+    can never stop it from starting.
+    """
     if not exe_path or not os.path.isfile(exe_path):
         raise RuntimeError("No supported browser was found on this computer. Install Google Chrome or Microsoft Edge.")
-    port = port or free_port()
     profile_folder = str(profile_folder)
     Path(profile_folder).mkdir(parents=True, exist_ok=True)
+    active_file = Path(profile_folder) / "DevToolsActivePort"
+    try:
+        active_file.unlink()  # left over from an earlier run; the browser writes a fresh one
+    except OSError:
+        pass
     args = [
         exe_path,
-        f"--remote-debugging-port={port}",
+        f"--remote-debugging-port={int(port or 0)}",
         f"--user-data-dir={profile_folder}",
         "--remote-allow-origins=*",
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-session-crashed-bubble",
+        # Chrome slows down pages in windows that are covered (for example by this
+        # program's own window) or in the background. Studio then reacts slowly and
+        # every step takes longer, so keep the page running at full speed.
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-background-timer-throttling",
         "--new-window",
+        *extra_args,
     ]
     if profile_directory:
         args.append(f"--profile-directory={profile_directory}")
     args.append(url)
-    creation_flags = 0
+    options: dict = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
     if sys.platform == "win32":
-        creation_flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen(args, creationflags=creation_flags, close_fds=True)  # noqa: S603
-    endpoint = BrowserEndpoint(port=port)
+        options["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        if getattr(sys, "frozen", False):
+            # The packaged program points Windows at its own unpacked files for DLLs,
+            # and a started program inherits that. Reset it so the browser loads its own.
+            try:
+                import ctypes
+
+                ctypes.windll.kernel32.SetDllDirectoryW(None)
+            except Exception:  # noqa: BLE001
+                pass
+    else:
+        options["start_new_session"] = True
+    process = subprocess.Popen(args, **options)  # noqa: S603
+    _LAUNCHED.append(process)  # the browser keeps running after this call returns
     deadline = time.time() + wait_seconds
+    exited_at: float | None = None
     while time.time() < deadline:
-        if endpoint.is_alive(timeout=1.0):
+        candidates = [_port_from_active_file(profile_folder) or 0]
+        if port:
+            candidates.append(int(port))
+        endpoint = _first_alive(candidates)
+        if endpoint:
             return endpoint
-        time.sleep(0.5)
+        if exited_at is None and process.poll() is not None:
+            exited_at = time.time()
+        if exited_at is not None and time.time() - exited_at > 4:
+            # The browser handed the request to a copy that was already running with
+            # this profile and then quit, so remote control was not switched on.
+            raise BrowserBusyError(
+                "The tool's browser is already open but the tool cannot reach inside it. "
+                "Close that browser window and try again."
+            )
+        time.sleep(0.25)
     raise RuntimeError(
-        "The browser started but did not switch on remote control. If it was already running, close every "
-        "window of it and try again."
+        "The browser started but did not switch on remote control in time. Close every window of the "
+        "tool's browser and try again."
     )
 
 
-def close_browser(exe_name: str, wait_seconds: float = 20.0) -> bool:
-    """Ask every window of a browser to close, then wait for the processes to end."""
-    if sys.platform != "win32":
-        return False
-    import psutil
-    import win32con
-    import win32gui
-    import win32process
-
-    pids = {p.pid for p in psutil.process_iter(["name"]) if (p.info["name"] or "").lower() == exe_name}
-    if not pids:
+def close_profile_browser(profile_folder: str | Path, wait_seconds: float = 12.0) -> bool:
+    """Close the browser that is using the tool's own profile (never the person's normal browser)."""
+    processes = profile_processes(profile_folder)
+    if not processes:
         return True
+    pids = {p.pid for p in processes}
+    if sys.platform == "win32":
+        try:
+            import win32con
+            import win32gui
+            import win32process
 
-    def visit(handle, _extra):
-        _thread, pid = win32process.GetWindowThreadProcessId(handle)
-        if pid in pids and win32gui.IsWindowVisible(handle):
-            win32gui.PostMessage(handle, win32con.WM_CLOSE, 0, 0)
+            def visit(handle, _extra):
+                _thread, pid = win32process.GetWindowThreadProcessId(handle)
+                if pid in pids and win32gui.IsWindowVisible(handle):
+                    win32gui.PostMessage(handle, win32con.WM_CLOSE, 0, 0)
 
-    win32gui.EnumWindows(visit, None)
+            win32gui.EnumWindows(visit, None)
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        for proc in processes:
+            try:
+                proc.terminate()
+            except Exception:  # noqa: BLE001
+                pass
+    try:
+        import psutil
+    except ImportError:
+        return False
     deadline = time.time() + wait_seconds
     while time.time() < deadline:
-        alive = [pid for pid in pids if psutil.pid_exists(pid)]
-        if not alive:
+        if not any(psutil.pid_exists(pid) for pid in pids):
             return True
-        time.sleep(0.5)
-    return False
+        time.sleep(0.25)
+    # Still running (for example with no window left): end it.
+    for proc in processes:
+        try:
+            proc.terminate()
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        psutil.wait_procs(processes, timeout=5)
+    except Exception:  # noqa: BLE001
+        pass
+    return not any(psutil.pid_exists(pid) for pid in pids)
 
 
 def describe_command(args: list[str]) -> str:

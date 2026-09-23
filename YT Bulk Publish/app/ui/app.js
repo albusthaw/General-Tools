@@ -8,7 +8,10 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   function api() {
-    if (window.pywebview && window.pywebview.api) return window.pywebview.api;
+    // The window library creates an empty api object first and fills it a moment
+    // later, so only count it as ready once a real function is there.
+    const bridge = window.pywebview && window.pywebview.api;
+    if (bridge && typeof bridge.app_info === "function") return bridge;
     if (window.__mockApi) return window.__mockApi;
     return null;
   }
@@ -18,6 +21,12 @@
     const result = await a[name](...args);
     if (result && result.error) throw new Error(result.error);
     return result;
+  }
+  // Same as call(), but gives up waiting after `ms` so the screen never stays stuck.
+  function callWithin(ms, slowMessage, name, ...args) {
+    let timer = null;
+    const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(slowMessage)), ms); });
+    return Promise.race([call(name, ...args), limit]).finally(() => clearTimeout(timer));
   }
 
   function toast(text, kind) {
@@ -68,6 +77,9 @@
     running: false,
     pollTimer: null,
     logCount: 0,
+    listing: false,   // a window list is being read
+    connecting: false, // a connect or open-browser step is running
+    listRound: 0,
   };
 
   // ---------- steps ----------
@@ -108,32 +120,65 @@
     if (actionLabel) $("#banner-action").addEventListener("click", action);
   }
 
-  async function loadWindows() {
-    const grid = $("#window-grid");
-    grid.innerHTML = '<div class="empty glass">Looking for open windows…</div>';
-    try {
-      const result = await call("list_windows");
-      state.windows = result.windows || [];
-      renderWindows();
-    } catch (err) {
-      grid.innerHTML = `<div class="empty glass">${esc(err.message)}</div>`;
-    }
+  function setConnectButtons(disabled) {
+    $("#btn-open-tool-browser").disabled = disabled;
+    $("#btn-refresh-windows").disabled = disabled || state.listing;
+    $("#window-grid").classList.toggle("is-busy", disabled);
   }
 
-  function renderWindows() {
+  async function loadWindows() {
+    if (state.listing) return; // one list at a time; the current one is nearly done
+    state.listing = true;
+    const round = ++state.listRound;
+    $("#btn-refresh-windows").disabled = true;
+    const grid = $("#window-grid");
+    if (!state.windows.length) grid.innerHTML = '<div class="empty glass">Looking for open windows…</div>';
+    try {
+      const result = await callWithin(25000, "Looking for windows took too long. Press Refresh to try again.", "list_windows");
+      state.windows = result.windows || [];
+      renderWindows(result.message);
+    } catch (err) {
+      grid.innerHTML = `<div class="empty glass">${esc(err.message)}</div>`;
+    } finally {
+      state.listing = false;
+      $("#btn-refresh-windows").disabled = state.connecting;
+    }
+    loadPictures(round);
+  }
+
+  // Pictures come second, so the list shows straight away.
+  async function loadPictures(round) {
+    const handles = state.windows.filter((w) => !w.minimized && !w.thumbnail).map((w) => w.handle);
+    if (!handles.length) return;
+    try {
+      const result = await callWithin(20000, "", "window_pictures", handles);
+      if (round !== state.listRound) return; // a newer list replaced this one
+      const pictures = result.pictures || {};
+      state.windows.forEach((w) => {
+        const picture = pictures[String(w.handle)];
+        if (!picture) return;
+        w.thumbnail = picture;
+        const thumb = $(`.win-card[data-handle="${w.handle}"] .thumb`);
+        if (thumb) thumb.innerHTML = `<img src="${picture}" alt="">`;
+      });
+    } catch (_) { /* pictures are a nice extra; the cards work without them */ }
+  }
+
+  function renderWindows(message) {
     const grid = $("#window-grid");
     if (!state.windows.length) {
-      grid.innerHTML = '<div class="empty glass">No browser windows found. Open YouTube Studio in Chrome or Edge, then press Refresh. Or use “Open a browser just for this tool”.</div>';
+      grid.innerHTML = `<div class="empty glass">${esc(message || "No browser windows found. Open YouTube Studio in Chrome or Edge, then press Refresh. Or use “Open a browser just for this tool”.")}</div>`;
       return;
     }
     grid.innerHTML = state.windows.map((w) => `
       <div class="glass win-card ${state.selectedWindow === w.handle ? "is-selected" : ""}" data-handle="${w.handle}">
-        <div class="thumb">${w.thumbnail ? `<img src="${w.thumbnail}" alt="">` : "No preview"}</div>
+        <div class="thumb">${w.thumbnail ? `<img src="${w.thumbnail}" alt="">` : (w.minimized ? "Minimised" : "No preview yet")}</div>
         <div class="meta">
           <div class="title" title="${esc(w.title)}">${esc(w.title)}</div>
           <div class="sub">
             <span>${esc(w.browser || w.process || "")}</span>
             ${w.youtube ? '<span class="tag yt">YouTube</span>' : ""}
+            ${w.tool_browser ? '<span class="tag">Tool’s browser</span>' : ""}
             ${w.remote ? '<span class="tag ok">Ready</span>' : ""}
           </div>
         </div>
@@ -142,14 +187,20 @@
   }
 
   async function chooseWindow(handle) {
+    if (state.connecting) { toast("Please wait, the tool is still connecting."); return; }
+    state.connecting = true;
+    setConnectButtons(true);
     state.selectedWindow = handle;
     renderWindows();
     banner("", "Connecting…", "Checking whether the tool can work inside this window.");
     try {
-      const result = await call("choose_window", handle);
+      const result = await callWithin(45000, "Connecting took too long. Close the browser window you picked, then use “Open a browser just for this tool”.", "choose_window", handle);
       handleConnectResult(result);
     } catch (err) {
       banner("bad", "Could not connect", err.message);
+    } finally {
+      state.connecting = false;
+      setConnectButtons(false);
     }
   }
 
@@ -162,6 +213,8 @@
       banner("warn", "This window cannot be controlled yet", result.message, "Open a browser just for this tool", openToolBrowser);
     } else if (result.status === "not_browser") {
       banner("warn", "That is not a browser window", result.message);
+    } else if (result.status === "busy") {
+      toast(result.message || "Please wait a moment.");
     } else if (result.status === "waiting_signin") {
       state.connected = true;
       banner("warn", "Please sign in", result.message, "I have signed in", async () => {
@@ -175,14 +228,20 @@
   }
 
   async function openToolBrowser() {
-    banner("", "Opening a browser…", "A new browser window will appear. If YouTube asks you to sign in, do it there.");
+    if (state.connecting) { toast("Please wait, the browser is still opening."); return; }
+    state.connecting = true;
+    setConnectButtons(true);
+    banner("", "Opening a browser…", "A browser window will appear (or come to the front if it is already open). If YouTube asks you to sign in, do it there.");
     try {
-      const result = await call("open_tool_browser");
+      const result = await callWithin(120000, "The browser is taking too long to open. Close every window of the tool’s browser and press the button again.", "open_tool_browser");
       handleConnectResult(result);
-      loadWindows();
     } catch (err) {
       banner("bad", "Could not open a browser", err.message);
+    } finally {
+      state.connecting = false;
+      setConnectButtons(false);
     }
+    loadWindows();
   }
 
   $("#btn-refresh-windows").addEventListener("click", loadWindows);
@@ -548,8 +607,18 @@
     const today = new Date(); today.setDate(today.getDate() + 1);
     $("#schedule-date").value = today.toISOString().slice(0, 10);
   }
-  if (window.pywebview && window.pywebview.api) init();
-  else window.addEventListener("pywebviewready", init, { once: true });
-  if (window.__mockApi) init();
-  setTimeout(() => { if (!api()) $("#window-grid").innerHTML = '<div class="empty glass">Still starting… if this message stays, restart the program.</div>'; }, 6000);
+  let started = false;
+  function startOnce() {
+    if (started || !api()) return;
+    started = true;
+    init();
+  }
+  window.addEventListener("pywebviewready", startOnce);
+  startOnce();
+  // In case the ready signal came before this script was listening, look again for a while.
+  const readyCheck = setInterval(() => { startOnce(); if (started) clearInterval(readyCheck); }, 250);
+  setTimeout(() => {
+    clearInterval(readyCheck);
+    if (!started) $("#window-grid").innerHTML = '<div class="empty glass">Still starting… if this message stays, restart the program.</div>';
+  }, 20000);
 })();

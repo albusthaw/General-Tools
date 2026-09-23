@@ -96,7 +96,10 @@ class Studio:
         self.slow = slow
         self.base_url = base_url.rstrip("/") + "/"
         self.host = urlparse(self.base_url).netloc
-        self.ensure_helpers()
+        try:
+            self.ensure_helpers()
+        except DevToolsError:
+            pass  # the tab is still loading; h() adds the helper when it is first needed
 
     # ---- basics -------------------------------------------------------------
     def log(self, message: str, level: str = "info") -> None:
@@ -109,7 +112,7 @@ class Studio:
     def h(self, expression: str, *args, timeout: float = 30.0):
         """Call a helper function on the page, re-injecting the script if needed."""
         encoded = ", ".join(json.dumps(a) for a in args)
-        code = f"(window.__ytbp && window.__ytbp.version === 3) ? window.__ytbp.{expression}({encoded}) : '__no_helper__'"
+        code = f"(window.__ytbp && window.__ytbp.version === {S.HELPER_VERSION}) ? window.__ytbp.{expression}({encoded}) : '__no_helper__'"
         result = self.page.evaluate(code, timeout=timeout)
         if result == "__no_helper__":
             self.ensure_helpers()
@@ -124,7 +127,16 @@ class Studio:
 
     def goto(self, url: str, wait_for: list[str] | None = None, timeout: float = 45.0) -> None:
         self.log(f"Opening {url}")
+        answered = self.page.leave_prompts_answered
+        try:
+            # First defence against "Leave site?"; handlers added another way are
+            # answered by the page link (see Page._answer_dialog).
+            self.page.evaluate("window.onbeforeunload = null; true", timeout=5)
+        except DevToolsError:
+            pass
         self.page.navigate(url, timeout=timeout)
+        if self.page.leave_prompts_answered != answered:
+            self.log("The previous page had unsaved changes; they were left behind.", "warning")
         self.page.wait_ready(timeout=timeout)
         self.ensure_helpers()
         if wait_for:
@@ -135,6 +147,32 @@ class Studio:
             return bool(self.h("signedIn"))
         except DevToolsError:
             return False
+
+    def wait_signed_in(self, timeout: float = 8.0) -> bool:
+        """Give a freshly opened tab a few seconds to show Studio; stop early on the sign-in page."""
+        deadline = time.time() + timeout
+        while True:
+            if self.is_signed_in():
+                return True
+            try:
+                current = self.url()
+            except DevToolsError:
+                current = ""
+            if "accounts.google.com" in current or "/signin" in current or time.time() >= deadline:
+                return False
+            time.sleep(0.4)
+
+    def current_page_is_list(self) -> bool:
+        """True when the open tab shows (or is loading) a Studio video list."""
+        try:
+            current = self.url()
+        except DevToolsError:
+            return False
+        if self.host not in current:
+            return False
+        if self.exists(S.ROW, visible=True):
+            return True
+        return bool(re.search(r"/videos(/|$)|/playlist/", urlparse(current).path))
 
     def channel_id(self) -> str:
         cid = self.h("channelId") or ""
@@ -180,7 +218,7 @@ class Studio:
         if not elem:
             raise StudioError(f"Could not find the {what}.")
         rect = self.h("rect", elem.ref)
-        self.pause(0.15)
+        self.pause(0.05)
         if rect and rect.get("visible") and rect["w"] > 0:
             try:
                 self.page.mouse_click(rect["x"], rect["y"])
@@ -220,11 +258,15 @@ class Studio:
     def is_checked(self, elem: Elem) -> bool:
         return bool(self.h("isChecked", elem.ref)) if elem else False
 
+    def find_confirmation(self) -> Elem:
+        """A confirming button on a small pop-up (never a button of the upload window itself)."""
+        return Elem(self, self.h("findTextExcept", S.CONFIRM_BUTTON, S.CONFIRM_TEXT, S.WIZARD[0]))
+
     def dismiss_confirmation(self, timeout: float = 2.0) -> bool:
         """Press the confirming button on a small pop-up, if one appeared."""
         deadline = time.time() + timeout
         while time.time() < deadline:
-            btn = self.find_text(S.CONFIRM_BUTTON, S.CONFIRM_TEXT)
+            btn = self.find_confirmation()
             if btn:
                 self.click(btn, "confirmation button")
                 self.pause(0.5)
@@ -253,10 +295,13 @@ class Studio:
             if self.host not in current:
                 raise StudioError("The open page is not YouTube Studio. Open your channel content or a playlist first.")
             if not self.exists(S.ROW, visible=True):
-                raise StudioError("The open page does not show a video list. Open Content or a playlist in YouTube Studio first.")
+                try:
+                    self.wait_for_rows(timeout=15.0)
+                except StudioError:
+                    raise StudioError("The open page does not show a video list. Open Content or a playlist in YouTube Studio first.") from None
             return current
         same_page = current.split("?")[0].rstrip("/") == url.rstrip("/")
-        clean = same_page and self.exists(S.ROW) and not self.exists(S.WIZARD, visible=False)
+        clean = same_page and self.exists(S.ROW) and not self._wizard_open()
         if not clean:
             self.goto(url)
         self.wait_for_rows()
@@ -265,8 +310,10 @@ class Studio:
     def recover(self) -> None:
         """Close whatever dialog is open so the next video can start cleanly."""
         try:
-            if self.exists(S.WIZARD, visible=False):
+            if self._wizard_open():
                 self._close_wizard()
+            if self._wizard_open():
+                return  # never press other buttons while the upload window is still showing
             for _ in range(2):
                 close = self.find(S.SHARE_DIALOG_CLOSE) or self.find_text(["ytcp-button", "button"], S.SHARE_DIALOG_CLOSE_TEXT)
                 if not close:
@@ -381,16 +428,20 @@ class Studio:
         # Fall back to the content list and the "Edit draft" button.
         return self._apply_from_list(video, changes, dry_run)
 
-    def _wait_for_editor_or_wizard(self, timeout: float = 25.0) -> str:
+    def _wait_for_editor_or_wizard(self, timeout: float = 25.0, fresh_page: bool = True) -> str:
+        """Tell whether the draft window or the normal editor opened.
+
+        On a freshly opened page the draft window counts as soon as it is present,
+        because it fades in. On a page that was not reloaded, a hidden draft window
+        can be left over from an earlier video, so only a showing one counts there.
+        """
         deadline = time.time() + timeout
         while time.time() < deadline:
-            # The draft wizard fades in, so check that it is present rather than visible.
-            if self.exists(S.WIZARD, visible=False):
-                self.pause(0.8)
+            if self._wizard_open() or (fresh_page and self.exists(S.WIZARD, visible=False)):
                 return "wizard"
             if self.exists(S.TITLE_BOX) and (self.exists(S.SAVE_BUTTON) or self.exists(S.EDITOR_ROOT)):
                 return "editor"
-            time.sleep(0.4)
+            time.sleep(0.3)
         return ""
 
     def _apply_from_list(self, video: Video, changes: Changes, dry_run: bool) -> str:
@@ -405,7 +456,7 @@ class Studio:
             self.click(title_link, "video title")
         else:
             self.click(button, "Edit draft button")
-        kind = self._wait_for_editor_or_wizard()
+        kind = self._wait_for_editor_or_wizard(fresh_page=False)
         if kind == "wizard":
             return self._apply_in_wizard(video, changes, dry_run)
         if kind == "editor":
@@ -612,6 +663,11 @@ class Studio:
                 self.click(item, "time option")
                 self.pause(0.4)
 
+    def _save_state(self) -> str:
+        """"saved" once the Save button is gone or greyed out, otherwise "pending"."""
+        save = self.find(S.SAVE_BUTTON) or self.find_text(["ytcp-button", "button"], S.SAVE_TEXT)
+        return "saved" if not save or self.is_disabled(save) else "pending"
+
     def _save_editor(self) -> None:
         save = self.find(S.SAVE_BUTTON) or self.find_text(["ytcp-button", "button"], S.SAVE_TEXT)
         if not save:
@@ -619,25 +675,53 @@ class Studio:
         if self.is_disabled(save):
             return
         self.click(save, "Save button")
-        self.pause(0.8)
-        self.dismiss_confirmation(timeout=2.5)
+        # Watch for the result instead of waiting a fixed time: the button greys out once
+        # YouTube has saved. A confirmation pop-up is pressed only if one appears. Two
+        # readings in a row are needed so a short flicker is not taken for "saved".
+        self.pause(0.6)
         deadline = time.time() + 30
+        saved_readings = 0
         while time.time() < deadline:
-            save = self.find(S.SAVE_BUTTON) or self.find_text(["ytcp-button", "button"], S.SAVE_TEXT)
-            if not save or self.is_disabled(save):
-                return
-            time.sleep(0.4)
+            if self._save_state() == "saved":
+                saved_readings += 1
+                if saved_readings >= 2:
+                    return
+            else:
+                saved_readings = 0
+                confirm = self.find_confirmation()
+                if confirm:
+                    self.click(confirm, "confirmation button")
+            time.sleep(0.3)
         raise StudioError("YouTube did not confirm that the changes were saved.")
 
     # ---- the draft / upload wizard ------------------------------------------------------
+    def _wizard_open(self) -> bool:
+        """True while the upload window is showing.
+
+        YouTube keeps the upload window's element on the page after it closes (it is
+        only hidden), so this looks at its visible parts, not at whether it exists.
+        """
+        return self.exists(S.WIZARD_VISIBLE, visible=True)
+
+    def _wait_title_loaded(self, timeout: float = 10.0) -> None:
+        """Wait until the draft's details have arrived in the title box (a draft title is never empty)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            box = self.find(S.TITLE_BOX)
+            if box and self.read(box).strip():
+                return
+            time.sleep(0.25)
+
     def _apply_in_wizard(self, video: Video, changes: Changes, dry_run: bool) -> str:
         notes: list[str] = []
         wizard = self.wait_for(S.WIZARD_VISIBLE, timeout=20, message="The draft window did not open.")
-        self.pause(1.0)
         step = self.find(S.WIZARD_STEP_DETAILS)
         if step:
             self.click(step, "Details step")
-            self.pause(0.6)
+        # The details are filled in a moment after the window appears; typing before
+        # that would be overwritten.
+        self._wait_title_loaded()
+        self.pause(0.3)
         self._set_details(changes, dry_run, notes)
         if not changes.visibility:
             if dry_run:
@@ -653,26 +737,48 @@ class Studio:
             return "Practice run: " + ", ".join(notes)
         self._go_to_visibility_step()
         self._choose_visibility(changes)
-        done = self.find(S.WIZARD_DONE)
-        if not done:
-            done = self.find_text(["ytcp-button", "button"], r"^\s*(done|publish|schedule|save)\s*$", wizard)
+        done = self._find_wizard_done(wizard)
         if not done:
             raise StudioError("Could not find the Done button in the draft window.")
         if self.is_disabled(done):
+            # The button turns on a moment after the visibility choice is made.
+            deadline = time.time() + 3
+            while time.time() < deadline and self.is_disabled(done):
+                time.sleep(0.25)
+                done = self._find_wizard_done(wizard) or done
+        if self.is_disabled(done):
             raise StudioError("YouTube is not letting this draft be published yet (usually the audience choice is missing).")
         self.click(done, "Done button")
-        self.pause(1.0)
         self._close_after_publish()
         notes.append(f"published as {changes.visibility}")
         return ", ".join(notes).capitalize()
+
+    def _find_wizard_done(self, wizard: Elem) -> Elem:
+        done = self.find(S.WIZARD_DONE)
+        if not done:
+            done = self.find_text(["ytcp-button", "button"], r"^\s*(done|publish|schedule|save)\s*$", wizard)
+        return done
+
+    def _visibility_step_showing(self) -> bool:
+        return self.exists(S.VISIBILITY_RADIOS) or self.exists(S.VISIBILITY_RADIO["public"])
+
+    def _wait_visibility_step(self, timeout: float) -> bool:
+        deadline = time.time() + timeout
+        while True:
+            if self._visibility_step_showing():
+                return True
+            if time.time() >= deadline:
+                return False
+            time.sleep(0.2)
 
     def _go_to_visibility_step(self) -> None:
         badge = self.find(S.WIZARD_STEP_VISIBILITY)
         if badge:
             self.click(badge, "Visibility step")
-            self.pause(0.8)
+            if self._wait_visibility_step(2.0):
+                return
         for _ in range(4):
-            if self.exists(S.VISIBILITY_RADIOS) or self.exists(S.VISIBILITY_RADIO["public"]):
+            if self._visibility_step_showing():
                 return
             nxt = self.find(S.WIZARD_NEXT)
             if not nxt:
@@ -680,42 +786,90 @@ class Studio:
             if self.is_disabled(nxt):
                 raise StudioError("YouTube will not go to the next step. Fill in the audience choice for this draft first.")
             self.click(nxt, "Next button")
-            self.pause(0.9)
-        if not (self.exists(S.VISIBILITY_RADIOS) or self.exists(S.VISIBILITY_RADIO["public"])):
+            self._wait_visibility_step(1.2)
+        if not self._visibility_step_showing():
             raise StudioError("Could not reach the Visibility step of the draft window.")
 
-    def _close_after_publish(self) -> None:
-        deadline = time.time() + 30
+    def _close_after_publish(self, timeout: float = 60.0) -> None:
+        """Wait until YouTube confirms the publish, then close its message.
+
+        After Done, YouTube saves the video and then shows a "Video published" (or
+        "still processing") message; that message is the proof that the video was
+        saved. The finished upload window is only hidden, and it may even stay
+        visible under the message, so the message is looked for first on every
+        check. Waiting for the upload window to leave the page used to cost about
+        40 seconds per draft.
+        """
+        deadline = time.time() + timeout
+        gone_since: float | None = None
         while time.time() < deadline:
-            close = self.find(S.SHARE_DIALOG_CLOSE) or self.find_text(["ytcp-button", "button"], S.SHARE_DIALOG_CLOSE_TEXT)
-            if close and not self.exists(S.WIZARD_DONE):
+            # The message's own buttons can never be buttons of the upload window.
+            close = self.find(S.PUBLISHED_MESSAGE_CLOSE)
+            if close:
                 self.click(close, "Close button")
-                self.pause(0.6)
-            if not self.exists(S.WIZARD, visible=False):
                 return
-            time.sleep(0.5)
-        # The wizard is still open; try the X button so the next video can start.
+            if self.exists(S.PUBLISH_CHECKS_WARNING):
+                raise StudioError(
+                    "YouTube is still checking this video and asks whether to publish it anyway. "
+                    "Publish it by hand in YouTube Studio, or run the tool again later."
+                )
+            if self._wizard_open():
+                gone_since = None  # still saving
+            else:
+                close = self.find(S.SHARE_DIALOG_CLOSE) or self.find_text(["ytcp-button", "button"], S.SHARE_DIALOG_CLOSE_TEXT)
+                if close:
+                    self.click(close, "Close button")
+                    return
+                gone_since = gone_since or time.time()
+                # The upload window has closed but no message showed up: after a short
+                # grace period treat the publish as finished.
+                if time.time() - gone_since > 1.5:
+                    return
+            time.sleep(0.2)
+        # The upload window is still open; try the X button so the next video can start.
         self._close_wizard()
+        raise StudioError("YouTube did not confirm the publish in time. Check this video in YouTube Studio.")
 
     def _close_wizard(self) -> None:
         close = self.find(S.WIZARD_CLOSE)
         if close:
             self.click(close, "Close button")
-            self.pause(0.6)
-            self.dismiss_confirmation(timeout=1.5)
-        self.wait_gone(S.WIZARD, timeout=8, visible=False)
+        # Wait until the upload window is hidden, pressing a confirmation pop-up if
+        # YouTube asks one. No fixed waiting: the loop ends as soon as it is closed.
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            if not self._wizard_open():
+                return
+            confirm = self.find_confirmation()
+            if confirm:
+                self.click(confirm, "confirmation button")
+            time.sleep(0.25)
+
+
+def _studio_target(endpoint: BrowserEndpoint, host: str) -> dict | None:
+    target = endpoint.find_page(host)
+    if not target and host == S.STUDIO_HOST:
+        target = endpoint.find_page("youtube.com") or endpoint.find_page("accounts.google.com")
+    return target
 
 
 def connect_studio(
     endpoint: BrowserEndpoint,
     log: Callable[[str, str], None] | None = None,
     base_url: str = S.STUDIO_URL,
+    wait_for_tab: float = 0.0,
 ) -> tuple[Page, dict]:
-    """Attach to the YouTube Studio tab of a controlled browser (opening one if needed)."""
+    """Attach to the YouTube Studio tab of a controlled browser (opening one if needed).
+
+    A browser that has just started needs a moment before its first tab shows up;
+    wait_for_tab gives it that time so a second Studio tab is not opened by mistake.
+    """
     host = urlparse(base_url).netloc
-    target = endpoint.find_page(host)
-    if not target and host == S.STUDIO_HOST:
-        target = endpoint.find_page("youtube.com") or endpoint.find_page("accounts.google.com")
+    deadline = time.time() + wait_for_tab
+    target = _studio_target(endpoint, host)
+    while not target and time.time() < deadline:
+        time.sleep(0.3)
+        target = _studio_target(endpoint, host)
     if not target:
         target = endpoint.new_page(base_url)
     try:

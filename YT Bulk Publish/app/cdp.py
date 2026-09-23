@@ -18,6 +18,10 @@ import websocket  # websocket-client
 
 DEFAULT_TIMEOUT = 30.0
 
+# The browser's control port lives on this computer, so requests to it must never
+# go through a proxy. urllib would otherwise use the Windows proxy settings.
+_LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 
 class DevToolsError(RuntimeError):
     """Raised when the browser rejects a command or does not answer in time."""
@@ -37,9 +41,9 @@ class BrowserEndpoint:
     def _request(self, path: str, method: str = "GET", timeout: float = 5.0) -> Any:
         request = urllib.request.Request(self.base_url + path, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            with _LOCAL_OPENER.open(request, timeout=timeout) as response:
                 raw = response.read().decode("utf-8", errors="replace")
-        except (urllib.error.URLError, OSError) as exc:
+        except (urllib.error.URLError, OSError, ValueError) as exc:
             raise DevToolsError(f"Cannot reach the browser at {self.base_url}: {exc}") from exc
         if not raw.strip():
             return None
@@ -49,11 +53,12 @@ class BrowserEndpoint:
             return raw  # some endpoints answer with a short sentence instead of JSON
 
     def is_alive(self, timeout: float = 2.0) -> bool:
+        """True when a Chromium remote-control port answers here (not just any web server)."""
         try:
-            self._request("/json/version", timeout=timeout)
-            return True
+            info = self._request("/json/version", timeout=timeout)
         except DevToolsError:
             return False
+        return isinstance(info, dict) and bool(info.get("webSocketDebuggerUrl") or info.get("Browser"))
 
     def version(self) -> dict:
         return self._request("/json/version")
@@ -74,10 +79,13 @@ class BrowserEndpoint:
     def new_page(self, url: str = "about:blank") -> dict:
         quoted = urllib.parse.quote(url, safe=":/?&=%#")
         try:
-            return self._request(f"/json/new?{quoted}", method="PUT")
+            target = self._request(f"/json/new?{quoted}", method="PUT")
         except DevToolsError:
             # Older builds accept GET only.
-            return self._request(f"/json/new?{quoted}", method="GET")
+            target = self._request(f"/json/new?{quoted}", method="GET")
+        if not isinstance(target, dict) or not target.get("id"):
+            raise DevToolsError("The browser did not open a new tab.")
+        return target
 
     def activate(self, target_id: str) -> None:
         self._request(f"/json/activate/{target_id}")
@@ -114,19 +122,39 @@ class Page:
         self._event_handlers: dict[str, list[Callable[[dict], None]]] = {}
         self._reader: threading.Thread | None = None
         self._closed = False
+        self._fire_and_forget: set[int] = set()
+        self.leave_prompts_answered = 0
 
     # ---- connection -----------------------------------------------------
     def connect(self) -> None:
         try:
-            self._ws = websocket.create_connection(self.ws_url, suppress_origin=True, timeout=DEFAULT_TIMEOUT)
+            self._ws = websocket.create_connection(
+                self.ws_url, suppress_origin=True, timeout=10, http_no_proxy=["127.0.0.1", "localhost", "::1"]
+            )
         except Exception as exc:  # noqa: BLE001
             raise DevToolsError(f"Cannot open a control link to the tab: {exc}") from exc
         self._ws.settimeout(0.5)
         self._closed = False
         self._reader = threading.Thread(target=self._read_loop, name="devtools-reader", daemon=True)
         self._reader.start()
+        # A "Leave site? Changes may not be saved" question would freeze the tab and
+        # block every later step, so it is answered straight away.
+        self.on("Page.javascriptDialogOpening", self._answer_dialog)
         self.send("Page.enable")
         self.send("Runtime.enable")
+
+    def _answer_dialog(self, params: dict) -> None:
+        """Answer the browser's own pop-ups, which would otherwise freeze the tab.
+
+        "Leave site?" is accepted (the tool moves on to the next video). Any other
+        message is closed the careful way: OK for a plain message, Cancel for a question.
+        """
+        kind = params.get("type")
+        if kind == "beforeunload":
+            self.leave_prompts_answered += 1
+            self.send_nowait("Page.handleJavaScriptDialog", {"accept": True})
+        else:
+            self.send_nowait("Page.handleJavaScriptDialog", {"accept": kind == "alert"})
 
     def close(self) -> None:
         self._closed = True
@@ -153,6 +181,9 @@ class Page:
                 continue
             if "id" in message:
                 with self._pending_cv:
+                    if message["id"] in self._fire_and_forget:
+                        self._fire_and_forget.discard(message["id"])
+                        continue
                     self._pending[message["id"]] = message
                     self._pending_cv.notify_all()
             elif "method" in message:
@@ -197,6 +228,20 @@ class Page:
             raise DevToolsError(f"{method} failed: {error.get('message', error)}")
         return response.get("result") or {}
 
+    def send_nowait(self, method: str, params: dict | None = None) -> None:
+        """Send a command without waiting for the answer (safe to use inside event handlers)."""
+        if self._ws is None or self._closed:
+            return
+        with self._lock:
+            self._next_id += 1
+            message_id = self._next_id
+            self._fire_and_forget.add(message_id)
+        try:
+            self._ws.send(json.dumps({"id": message_id, "method": method, "params": params or {}}))
+        except Exception:  # noqa: BLE001
+            with self._lock:
+                self._fire_and_forget.discard(message_id)
+
     def on(self, event: str, handler: Callable[[dict], None]) -> None:
         self._event_handlers.setdefault(event, []).append(handler)
 
@@ -206,14 +251,22 @@ class Page:
 
     # ---- page level -------------------------------------------------------
     def navigate(self, url: str, timeout: float = 45.0) -> None:
+        """Open a URL and return once the new page's document is ready.
+
+        Waiting for the document (DOMContentLoaded) instead of every picture and
+        script (the load event) saves seconds on heavy pages; callers then wait
+        for the exact element they need.
+        """
         started = time.time()
-        self.send("Page.navigate", {"url": url})
+        result = self.send("Page.navigate", {"url": url}, timeout=timeout)
+        if not result.get("loaderId"):
+            return  # only the part after # changed; the document stays the same
         deadline = started + timeout
         while time.time() < deadline:
-            if self.events_since(started, "Page.loadEventFired"):
+            if self.events_since(started, "Page.domContentEventFired") or self.events_since(started, "Page.loadEventFired"):
                 return
-            time.sleep(0.2)
-        # Some single-page apps never fire the load event again; make sure the URL changed.
+            time.sleep(0.1)
+        # Some single-page apps never fire the events again; make sure the URL changed.
         if url.split("#")[0] not in self.url():
             raise DevToolsError(f"The page did not finish loading: {url}")
 

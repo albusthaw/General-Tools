@@ -6,8 +6,8 @@ YouTube Studio has no bulk publish for uploaded drafts and no flexible bulk rena
 
 ## What it does
 
-1. **Pick window**: shows a live picture of every open browser window. Click the one with YouTube Studio. If that window was opened normally, the tool offers to open its own browser window instead; you sign in there once and the sign-in is remembered in the tool's own profile folder.
-2. **Videos**: reads the video list from the open page, from all channel content, or from a playlist link. Titles, status (Draft, Private, Unlisted, Public, Scheduled), date and length are shown with search, status filters and a "Save title list" button (CSV).
+1. **Pick window**: lists every open browser window straight away, then adds a small picture of each one. Click the one with YouTube Studio. If that window was opened normally, the tool offers to open its own browser window instead; you sign in there once and the sign-in is remembered in the tool's own profile folder. If the tool's browser is already open, the button brings it to the front instead of starting another one.
+2. **Videos**: reads the video list from the open page (or from all channel content when the open page has no list), from all channel content, or from a playlist link. Titles, status (Draft, Private, Unlisted, Public, Scheduled), date and length are shown with search, status filters and a "Save title list" button (CSV).
 3. **Changes**: switch on what to change in bulk:
    - Visibility: Public, Unlisted, Private or Schedule (with a gap in minutes between videos). Drafts are finished and published with the chosen visibility.
    - Title: rename steps applied in order, with a live old-to-new preview. Steps: change a word or phrase (match case, whole words), remove text, add text at the start or end, number the videos (`{title}`, `{n}`, `{index}`, `{date}`, `{original}` tokens with start, step and digits), change letter case, tidy spaces, advanced pattern. Rule sets can be saved and loaded.
@@ -17,7 +17,7 @@ YouTube Studio has no bulk publish for uploaded drafts and no flexible bulk rena
    - Playlist: add every selected video to an existing playlist.
 4. **Run**: a summary, a practice-run option that saves nothing, a pause setting between videos, a per-video progress list, an activity log and a Stop button.
 
-The tool keeps its files in `Documents\YT Bulk Publish\` (browser profile, logs, saved rule sets, settings).
+The tool keeps its files in `Documents\YT Bulk Publish\` (browser profile, logs, saved rule sets, settings). If the program ever closes by itself, `Logs\Crash notes.txt` records what happened.
 
 ## Run from source
 
@@ -51,11 +51,16 @@ python -m unittest discover -s tests -v
 ```
 
 - `tests/test_rename.py` covers the rename rules.
-- `tests/test_engine_mock.py` starts a Chromium-based browser with remote control and runs the real engine against `tests/mock_studio.py`, a small local stand-in for YouTube Studio that uses the same element names as the real pages (video rows, editor, draft wizard, visibility and playlist pop-ups). It is skipped when no browser is found.
+- `tests/test_engine_mock.py` starts a Chromium-based browser with remote control and runs the real engine against `tests/mock_studio.py`, a small local stand-in for YouTube Studio that uses the same element names as the real pages (video rows, editor, draft wizard, visibility and playlist pop-ups). The mock can also behave like the live site, which keeps the finished upload window on the page (hidden) and asks "Leave site?" when changes are unsaved. It is skipped when no browser is found.
+- `tests/test_bridge.py` checks that the interface can only see the program's plain functions (no browser needed).
+- `tests/test_browser_control.py` checks how the tool finds the browser's control port and starts, finds and closes its own browser.
+- `tests/test_window_picker.py` (Windows only) opens a small test window, finds it in the window list, takes its picture and brings it to the front.
+
+The GitHub build runs all of these on Windows before it builds the program.
 
 ## How it works, briefly
 
-The program (pywebview, HTML and CSS) talks to a Chromium-based browser through the browser's remote-control port (the same port developer tools use). Chrome no longer allows that port on its normal profile, so the tool starts the browser with a profile of its own inside `Documents\YT Bulk Publish\Browser Profile`. Nothing is sent anywhere else; there are no API keys and the tool never sees your password.
+The program (pywebview, HTML and CSS) talks to a Chromium-based browser through the browser's remote-control port (the same port developer tools use). Chrome no longer allows that port on its normal profile, so the tool starts the browser with a profile of its own inside `Documents\YT Bulk Publish\Browser Profile`. The browser picks a free port itself and writes it into that folder, so another program using a common port cannot get in the way. Nothing is sent anywhere else; there are no API keys and the tool never sees your password.
 
 Element names for YouTube Studio live in `app/selectors.py`, each with several fall-backs and text-based searches. If YouTube changes its pages, that is the file to update.
 
@@ -79,6 +84,16 @@ A larger live run followed on the same day: 8 further clips were uploaded as dra
 - Window pictures and the browser-window picker are Windows only.
 
 ## Changes
+
+### 1.0.1
+
+- Fixed: the first step could stay on "Looking for open windows" for a long time, and pressing buttons then could close the program. The window list now appears at once and the pictures follow.
+- Fixed: "Open a browser just for this tool" often kept loading without opening a window. It now reuses the tool's browser when it is already open, restarts it when it cannot be reached, and brings it to the front.
+- A second press on a button while the tool is busy is now ignored instead of starting the same job twice. Every step on the first screen has a time limit and a clear message.
+- Publishing a draft is much faster: the tool no longer waits about 40 seconds for the finished upload window, which YouTube only hides. Saving an edited video no longer waits a fixed time either.
+- A page that asks "Leave site?" after a failed video no longer stops the whole run.
+- "Load videos" reads all channel videos when the open page has no video list.
+- If the program closes by itself, `Logs\Crash notes.txt` now records why.
 
 ### 1.0.0
 
