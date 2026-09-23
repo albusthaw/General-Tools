@@ -139,14 +139,22 @@ class Page:
         self._reader.start()
         # A "Leave site? Changes may not be saved" question would freeze the tab and
         # block every later step, so it is answered straight away.
-        self.on("Page.javascriptDialogOpening", self._answer_leave_page)
+        self.on("Page.javascriptDialogOpening", self._answer_dialog)
         self.send("Page.enable")
         self.send("Runtime.enable")
 
-    def _answer_leave_page(self, params: dict) -> None:
-        if params.get("type") == "beforeunload":
+    def _answer_dialog(self, params: dict) -> None:
+        """Answer the browser's own pop-ups, which would otherwise freeze the tab.
+
+        "Leave site?" is accepted (the tool moves on to the next video). Any other
+        message is closed the careful way: OK for a plain message, Cancel for a question.
+        """
+        kind = params.get("type")
+        if kind == "beforeunload":
             self.leave_prompts_answered += 1
             self.send_nowait("Page.handleJavaScriptDialog", {"accept": True})
+        else:
+            self.send_nowait("Page.handleJavaScriptDialog", {"accept": kind == "alert"})
 
     def close(self) -> None:
         self._closed = True

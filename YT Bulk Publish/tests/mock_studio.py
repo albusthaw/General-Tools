@@ -194,17 +194,18 @@ document.getElementById('next-button').addEventListener('click', () => { if (!au
 document.getElementById('back-button').addEventListener('click', () => { step = Math.max(0, step - 1); show(); });
 document.querySelectorAll('#privacy-radios tp-yt-paper-radio-button').forEach(r => r.addEventListener('click', () => { document.querySelectorAll('#privacy-radios tp-yt-paper-radio-button').forEach(x => x.setAttribute('aria-checked', 'false')); r.setAttribute('aria-checked', 'true'); privacy = r.getAttribute('name').toLowerCase(); document.getElementById('done-button').removeAttribute('disabled'); }));
 const realStudio = %(real_studio)s;  // true: behave like the live site (see MockState.real_studio)
+const keepWizardShowing = %(wizard_under)s;  // true: the upload window stays visible under the message
 document.getElementById('done-button').addEventListener('click', async () => {
   video.title = document.querySelector('#title-textarea #textbox').innerText.trim(); video.description = document.querySelector('#description-textarea #textbox').innerText.trim(); video.status = privacy;
   const done = document.getElementById('done-button'); done.setAttribute('disabled', '');
   if (realStudio) await new Promise(r => setTimeout(r, 800));  // "Saving..."
   await fetch('/api/publish', {method: 'POST', body: JSON.stringify(video)});
   const dialog = document.querySelector('ytcp-uploads-dialog');
-  if (realStudio) dialog.classList.add('hidden'); else dialog.remove();
+  if (keepWizardShowing) { /* left as it is, under the message */ } else if (realStudio) dialog.classList.add('hidden'); else dialog.remove();
   document.querySelector('ytcp-video-share-dialog').classList.remove('hidden');
 });
 document.querySelector('ytcp-video-share-dialog #close-button').addEventListener('click', () => {
-  if (realStudio) document.querySelector('ytcp-video-share-dialog').classList.add('hidden');
+  if (realStudio) { document.querySelector('ytcp-video-share-dialog').classList.add('hidden'); document.querySelector('ytcp-uploads-dialog').classList.add('hidden'); }
   else location.href = '/channel/%(channel)s/videos/upload';
 });
 document.querySelector('ytcp-uploads-dialog #close-button').addEventListener('click', async () => {
@@ -229,6 +230,7 @@ class MockState:
         # The live Studio keeps the finished upload window on the page (hidden), takes a
         # moment to save, and stays on the content page after "Video published" closes.
         self.real_studio = False
+        self.wizard_under = False
 
     def find(self, video_id: str) -> dict | None:
         return next((v for v in self.videos if v["id"] == video_id), None)
@@ -281,7 +283,7 @@ class Handler(BaseHTTPRequestHandler):
             draft = STATE.find(query.get("udvid", "")) if query.get("d") == "ud" else None
             if draft and draft["status"] == "draft":
                 body = WIZARD_BODY % {"title": draft["title"], "description": draft["description"]}
-                script = WIZARD_SCRIPT % {"video": json.dumps(draft), "channel": CHANNEL, "real_studio": json.dumps(STATE.real_studio)}
+                script = WIZARD_SCRIPT % {"video": json.dumps(draft), "channel": CHANNEL, "real_studio": json.dumps(STATE.real_studio), "wizard_under": json.dumps(STATE.wizard_under)}
                 return self._send(SHELL.format(title="Draft - YouTube Studio", body=body, script=script).encode())
             videos = STATE.videos if path.startswith("/channel/") else [v for v in STATE.videos if "Recipes" in v["playlists"]]
             script = LIST_SCRIPT % {"page_size": STATE.page_size, "videos": json.dumps(videos)}
@@ -293,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(b"not found", status=404)
             if video["status"] == "draft":
                 body = WIZARD_BODY % {"title": video["title"], "description": video["description"]}
-                script = WIZARD_SCRIPT % {"video": json.dumps(video), "channel": CHANNEL, "real_studio": json.dumps(STATE.real_studio)}
+                script = WIZARD_SCRIPT % {"video": json.dumps(video), "channel": CHANNEL, "real_studio": json.dumps(STATE.real_studio), "wizard_under": json.dumps(STATE.wizard_under)}
                 return self._send(SHELL.format(title="Draft - YouTube Studio", body=body, script=script).encode())
             body = EDITOR_BODY % {
                 "title": video["title"],
@@ -315,6 +317,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/real_studio":
             query = dict(part.split("=", 1) for part in urlparse(self.path).query.split("&") if "=" in part)
             STATE.real_studio = query.get("on", "1") == "1"
+            STATE.wizard_under = query.get("under", "0") == "1"
             return self._send(b"{}", "application/json")
         if path == "/api/load_many":
             query = dict(part.split("=", 1) for part in urlparse(self.path).query.split("&") if "=" in part)

@@ -266,6 +266,17 @@ class MockStudioTest(unittest.TestCase):
         self.assertTrue(any("unsaved changes" in line for line in self.log_lines), self.log_lines)
         self.assertEqual(self.state()["saves"], [])
 
+    def test_14_publish_message_over_a_showing_upload_window(self):
+        # Some live runs show "Video published" while the upload window is still
+        # visible underneath; the message alone proves the publish.
+        urllib.request.urlopen(self.base_url + "api/real_studio?on=1&under=1").read()
+        video = Video(id="jK9lM1nO3pQ", title="Bulk Test 2", status="draft", draft=True)
+        started = time.time()
+        result = self.studio.apply(video, Changes(visibility="private", audience="not_for_kids"))
+        self.assertIn("published as private", result.lower())
+        self.assertEqual(self.state()["videos"][1]["status"], "private")
+        self.assertLess(time.time() - started, 15)
+
     def test_13_current_page_falls_back_to_channel_list(self):
         self.studio.goto(self.base_url)  # the dashboard has no video list
         self.assertFalse(self.studio.current_page_is_list())

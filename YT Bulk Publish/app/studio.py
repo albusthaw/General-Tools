@@ -128,6 +128,12 @@ class Studio:
     def goto(self, url: str, wait_for: list[str] | None = None, timeout: float = 45.0) -> None:
         self.log(f"Opening {url}")
         answered = self.page.leave_prompts_answered
+        try:
+            # First defence against "Leave site?"; handlers added another way are
+            # answered by the page link (see Page._answer_dialog).
+            self.page.evaluate("window.onbeforeunload = null; true", timeout=5)
+        except DevToolsError:
+            pass
         self.page.navigate(url, timeout=timeout)
         if self.page.leave_prompts_answered != answered:
             self.log("The previous page had unsaved changes; they were left behind.", "warning")
@@ -212,7 +218,7 @@ class Studio:
         if not elem:
             raise StudioError(f"Could not find the {what}.")
         rect = self.h("rect", elem.ref)
-        self.pause(0.15)
+        self.pause(0.05)
         if rect and rect.get("visible") and rect["w"] > 0:
             try:
                 self.page.mouse_click(rect["x"], rect["y"])
@@ -422,16 +428,20 @@ class Studio:
         # Fall back to the content list and the "Edit draft" button.
         return self._apply_from_list(video, changes, dry_run)
 
-    def _wait_for_editor_or_wizard(self, timeout: float = 25.0) -> str:
+    def _wait_for_editor_or_wizard(self, timeout: float = 25.0, fresh_page: bool = True) -> str:
+        """Tell whether the draft window or the normal editor opened.
+
+        On a freshly opened page the draft window counts as soon as it is present,
+        because it fades in. On a page that was not reloaded, a hidden draft window
+        can be left over from an earlier video, so only a showing one counts there.
+        """
         deadline = time.time() + timeout
         while time.time() < deadline:
-            # The draft wizard fades in, so check that it is present rather than visible.
-            if self.exists(S.WIZARD, visible=False):
-                self.pause(0.8)
+            if self._wizard_open() or (fresh_page and self.exists(S.WIZARD, visible=False)):
                 return "wizard"
             if self.exists(S.TITLE_BOX) and (self.exists(S.SAVE_BUTTON) or self.exists(S.EDITOR_ROOT)):
                 return "editor"
-            time.sleep(0.4)
+            time.sleep(0.3)
         return ""
 
     def _apply_from_list(self, video: Video, changes: Changes, dry_run: bool) -> str:
@@ -446,7 +456,7 @@ class Studio:
             self.click(title_link, "video title")
         else:
             self.click(button, "Edit draft button")
-        kind = self._wait_for_editor_or_wizard()
+        kind = self._wait_for_editor_or_wizard(fresh_page=False)
         if kind == "wizard":
             return self._apply_in_wizard(video, changes, dry_run)
         if kind == "editor":
@@ -780,43 +790,42 @@ class Studio:
         if not self._visibility_step_showing():
             raise StudioError("Could not reach the Visibility step of the draft window.")
 
-    def _find_publish_message_close(self, wizard_open: bool) -> Elem:
-        """The Close button of the "Video published" / "still processing" message, if it shows.
-
-        While the upload window is still showing, only the message's own buttons are
-        looked for, so the upload window's X or Done is never pressed by mistake.
-        """
-        close = self.find(S.PUBLISHED_MESSAGE_CLOSE)
-        if not close and not wizard_open:
-            close = self.find(S.SHARE_DIALOG_CLOSE) or self.find_text(["ytcp-button", "button"], S.SHARE_DIALOG_CLOSE_TEXT)
-        return close
-
     def _close_after_publish(self, timeout: float = 60.0) -> None:
         """Wait until YouTube confirms the publish, then close its message.
 
-        After Done, YouTube saves the video and swaps the upload window for a
-        "Video published" (or "still processing") message. The finished upload
-        window only becomes hidden, so the check looks at its visible parts; waiting
-        for the element to leave the page used to cost about 40 seconds per draft.
+        After Done, YouTube saves the video and then shows a "Video published" (or
+        "still processing") message; that message is the proof that the video was
+        saved. The finished upload window is only hidden, and it may even stay
+        visible under the message, so the message is looked for first on every
+        check. Waiting for the upload window to leave the page used to cost about
+        40 seconds per draft.
         """
         deadline = time.time() + timeout
-        finished_since: float | None = None
+        gone_since: float | None = None
         while time.time() < deadline:
-            wizard_open = self._wizard_open()
-            if wizard_open and self.exists(S.WIZARD_DONE):
-                finished_since = None  # still saving: the Done button is still showing
+            # The message's own buttons can never be buttons of the upload window.
+            close = self.find(S.PUBLISHED_MESSAGE_CLOSE)
+            if close:
+                self.click(close, "Close button")
+                return
+            if self.exists(S.PUBLISH_CHECKS_WARNING):
+                raise StudioError(
+                    "YouTube is still checking this video and asks whether to publish it anyway. "
+                    "Publish it by hand in YouTube Studio, or run the tool again later."
+                )
+            if self._wizard_open():
+                gone_since = None  # still saving
             else:
-                close = self._find_publish_message_close(wizard_open)
+                close = self.find(S.SHARE_DIALOG_CLOSE) or self.find_text(["ytcp-button", "button"], S.SHARE_DIALOG_CLOSE_TEXT)
                 if close:
                     self.click(close, "Close button")
-                    self.pause(0.3)
                     return
-                finished_since = finished_since or time.time()
-                # The Done button has gone but no message showed up: after a short
+                gone_since = gone_since or time.time()
+                # The upload window has closed but no message showed up: after a short
                 # grace period treat the publish as finished.
-                if time.time() - finished_since > 5.0:
+                if time.time() - gone_since > 1.5:
                     return
-            time.sleep(0.25)
+            time.sleep(0.2)
         # The upload window is still open; try the X button so the next video can start.
         self._close_wizard()
         raise StudioError("YouTube did not confirm the publish in time. Check this video in YouTube Studio.")

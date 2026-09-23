@@ -100,12 +100,16 @@ SHARE_DIALOG_CLOSE = [
     "tp-yt-paper-dialog #close-button",
 ]
 SHARE_DIALOG_CLOSE_TEXT = r"^\s*(close|done|ok)\s*$"
-# Buttons that belong only to the "Video published" / "still processing" messages.
+# Buttons that belong only to the "Video published" / "still processing" / "processed" messages.
 PUBLISHED_MESSAGE_CLOSE = [
     "ytcp-video-share-dialog #close-button",
     "ytcp-uploads-still-processing-dialog #close-button",
     "ytcp-uploads-still-processing-dialog ytcp-button",
+    "ytcp-uploads-video-processed-dialog #close-button",
+    "ytcp-uploads-video-processed-dialog ytcp-button",
 ]
+# "We're still checking your content. Publish anyway?" (the person decides; the tool does not).
+PUBLISH_CHECKS_WARNING = ["ytcp-prechecks-warning-dialog tp-yt-paper-dialog", "ytcp-prechecks-warning-dialog"]
 
 # ---- confirmations that sometimes pop up -----------------------------------
 CONFIRM_BUTTON = ["ytcp-confirmation-dialog ytcp-button", "tp-yt-paper-dialog ytcp-button", "ytcp-dialog ytcp-button"]
