@@ -221,8 +221,12 @@ def profile_processes(profile_folder: str | Path) -> list:
     except ImportError:
         return []
     found = []
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+    browser_names = set(KNOWN_BROWSERS) | {Path(name).stem for name in KNOWN_BROWSERS} | {"chrome", "chromium", "chromium-browser"}
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
+            if str(proc.info.get("name") or "").lower() not in browser_names:
+                continue  # reading every program's start-up options is slow on Windows
+            proc.info["cmdline"] = proc.cmdline()
             cmdline = proc.info.get("cmdline") or []
             if any(part.startswith("--type=") for part in cmdline):
                 continue  # helper processes (tabs, GPU) follow the main one

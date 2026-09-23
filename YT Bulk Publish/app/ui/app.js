@@ -233,7 +233,7 @@
     setConnectButtons(true);
     banner("", "Opening a browser…", "A browser window will appear (or come to the front if it is already open). If YouTube asks you to sign in, do it there.");
     try {
-      const result = await callWithin(90000, "The browser is taking too long to open. Close every window of the tool’s browser and press the button again.", "open_tool_browser");
+      const result = await callWithin(120000, "The browser is taking too long to open. Close every window of the tool’s browser and press the button again.", "open_tool_browser");
       handleConnectResult(result);
     } catch (err) {
       banner("bad", "Could not open a browser", err.message);
