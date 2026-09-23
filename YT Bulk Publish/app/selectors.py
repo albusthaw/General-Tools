@@ -100,6 +100,12 @@ SHARE_DIALOG_CLOSE = [
     "tp-yt-paper-dialog #close-button",
 ]
 SHARE_DIALOG_CLOSE_TEXT = r"^\s*(close|done|ok)\s*$"
+# Buttons that belong only to the "Video published" / "still processing" messages.
+PUBLISHED_MESSAGE_CLOSE = [
+    "ytcp-video-share-dialog #close-button",
+    "ytcp-uploads-still-processing-dialog #close-button",
+    "ytcp-uploads-still-processing-dialog ytcp-button",
+]
 
 # ---- confirmations that sometimes pop up -----------------------------------
 CONFIRM_BUTTON = ["ytcp-confirmation-dialog ytcp-button", "tp-yt-paper-dialog ytcp-button", "ytcp-dialog ytcp-button"]
@@ -107,20 +113,31 @@ CONFIRM_TEXT = r"^\s*(save|continue|confirm|publish|yes|got it|ok|done)\s*$"
 
 
 # ---- helper script injected into the Studio tab ---------------------------
+# Raise HELPER_VERSION whenever HELPER_JS changes, so an older copy left in an open
+# tab is replaced.
+HELPER_VERSION = 4
 HELPER_JS = r"""
 (() => {
-  if (window.__ytbp && window.__ytbp.version === 3) return true;
-  const H = { version: 3, store: {}, nextId: 1 };
+  if (window.__ytbp && window.__ytbp.version === 4) return true;
+  const H = { version: 4, store: {}, ids: new WeakMap(), nextId: 1, hostCache: new WeakMap() };
 
   H.plainAll = (selector, root) => { try { return Array.from((root || document).querySelectorAll(selector)); } catch (e) { return []; } };
+  // Listing every element to find shadow roots is slow on a big page, and a missed
+  // selector used to repeat it on every check. The list is kept for one second.
+  H.shadowHosts = (node) => {
+    const now = Date.now(); const cached = H.hostCache.get(node);
+    if (cached && now - cached.t < 1000) return cached.hosts;
+    let hosts = [];
+    try { hosts = Array.from(node.querySelectorAll('*')).filter(e => e.shadowRoot); } catch (e) {}
+    H.hostCache.set(node, { t: now, hosts });
+    return hosts;
+  };
   H.deepAll = (selector, root) => {
     const out = []; const seen = new Set();
     const walk = (node, depth) => {
       if (!node || depth > 12) return;
       for (const m of H.plainAll(selector, node)) { if (!seen.has(m)) { seen.add(m); out.push(m); } }
-      let hosts = [];
-      try { hosts = Array.from(node.querySelectorAll('*')).filter(e => e.shadowRoot); } catch (e) {}
-      for (const host of hosts) walk(host.shadowRoot, depth + 1);
+      for (const host of H.shadowHosts(node)) walk(host.shadowRoot, depth + 1);
     };
     walk(root || document, 0);
     if (root && root.shadowRoot) walk(root.shadowRoot, 1);
@@ -144,18 +161,22 @@ HELPER_JS = r"""
     }
     return null;
   };
-  H.byText = (selectors, pattern, root, flags) => {
+  H.byText = (selectors, pattern, root, flags, exclude) => {
     const re = new RegExp(pattern, flags == null ? 'i' : flags);
     for (const s of H.list(selectors)) {
-      for (const el of H.all(s, root)) { if (H.visible(el) && re.test(H.text(el))) return el; }
+      for (const el of H.all(s, root)) {
+        if (exclude && el.closest && el.closest(exclude)) continue;
+        if (H.visible(el) && re.test(H.text(el))) return el;
+      }
     }
     return null;
   };
-  H.mark = (el) => { if (!el) return 0; for (const k in H.store) { if (H.store[k] === el) return Number(k); } const id = H.nextId++; H.store[id] = el; return id; };
+  H.mark = (el) => { if (!el) return 0; const known = H.ids.get(el); if (known) return known; const id = H.nextId++; H.store[id] = el; H.ids.set(el, id); return id; };
   H.get = (id) => H.store[id] || null;
   H.find = (selectors, needVisible) => H.mark(H.first(selectors, document, needVisible));
   H.findIn = (parentId, selectors, needVisible) => H.mark(H.first(selectors, H.get(parentId) || document, needVisible));
   H.findText = (selectors, pattern, parentId) => H.mark(H.byText(selectors, pattern, parentId ? H.get(parentId) : document));
+  H.findTextExcept = (selectors, pattern, exclude) => H.mark(H.byText(selectors, pattern, document, null, exclude));
   H.count = (selectors) => { let n = 0; for (const s of H.list(selectors)) n = Math.max(n, H.all(s).length); return n; };
   H.exists = (selectors, needVisible) => !!H.first(selectors, document, needVisible);
   H.rect = (id) => {

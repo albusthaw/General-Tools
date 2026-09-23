@@ -42,14 +42,57 @@ def startup_check() -> int:
     return code
 
 
+def _keep_crash_notes(logs_folder: Path) -> None:
+    """Write details of hard crashes and unexpected errors to Logs/Crash notes.txt.
+
+    The packaged program has no console, so without this a crash leaves no trace.
+    It also gives the libraries somewhere to write, because printing to a missing
+    console fails.
+    """
+    import faulthandler
+    import threading
+    import traceback
+
+    try:
+        notes = open(logs_folder / "Crash notes.txt", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+    except OSError:
+        return
+    if sys.stdout is None:
+        sys.stdout = notes
+    if sys.stderr is None:
+        sys.stderr = notes
+    try:
+        # Lines saying "code 0xe0434352" come from errors the window library handles
+        # itself and are harmless; a real crash ends with a full list of threads.
+        faulthandler.enable(file=notes, all_threads=True)
+    except (OSError, ValueError, RuntimeError):
+        pass
+
+    def note(kind: str, exc_type, exc, tb) -> None:
+        try:
+            notes.write(f"--- {kind} ---\n{''.join(traceback.format_exception(exc_type, exc, tb))}\n")
+        except Exception:  # noqa: BLE001
+            pass
+
+    previous_hook = sys.excepthook
+
+    def on_error(exc_type, exc, tb):
+        note("unexpected error", exc_type, exc, tb)
+        previous_hook(exc_type, exc, tb)
+
+    sys.excepthook = on_error
+    threading.excepthook = lambda args: note(f"error in {getattr(args.thread, 'name', 'a helper')}", args.exc_type, args.exc_value, args.exc_traceback)
+
+
 def main() -> None:
     if "--check" in sys.argv[1:]:
         raise SystemExit(startup_check())
-    ensure_folders()
+    folders = ensure_folders()
+    _keep_crash_notes(folders["logs"])
     import webview  # imported here so the rest of the app can be tested without it
 
     api = Api()
-    size = api.settings.get("window", {}) or {}
+    size = api._window_size()
     window = webview.create_window(
         APP_NAME,
         str(resource_path("ui", "index.html")),
@@ -62,15 +105,10 @@ def main() -> None:
         background_color="#f3f5fb",
         text_select=False,
     )
-    api.window = window
-
-    def remember_size():
-        try:
-            api.settings.set("window", {"width": window.width, "height": window.height})
-        except Exception:  # noqa: BLE001
-            pass
-
-    window.events.closing += remember_size
+    # Kept in a private attribute: the window library looks through every public
+    # attribute of the api object, and walking into the window froze the program.
+    api._set_window(window)
+    window.events.closing += api._remember_window_size
     gui = "edgechromium" if sys.platform == "win32" else None
     webview.start(gui=gui, debug=False, private_mode=False)
 

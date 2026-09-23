@@ -167,6 +167,7 @@ h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
 }
 .win-card:hover { transform: translateY(-3px); box-shadow: 0 22px 50px rgba(31, 41, 80, 0.16), 0 0 0 1px var(--glass-edge); }
 .win-card.is-selected { box-shadow: 0 0 0 2px var(--accent-b), var(--shadow); }
+.window-grid.is-busy .win-card { opacity: 0.65; cursor: progress; transition: opacity 200ms ease; }
 .win-card .thumb {
   width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: rgba(27, 33, 64, 0.06);
   display: grid; place-items: center; color: var(--ink-mute); font-size: 13px;
@@ -175,7 +176,7 @@ h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
 .win-card .meta { padding: 10px 4px 2px; }
 .win-card .title { font-weight: 650; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .win-card .sub { font-size: 12.5px; color: var(--ink-mute); display: flex; gap: 8px; align-items: center; margin-top: 4px; }
-.tag { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: rgba(27, 33, 64, 0.08); color: var(--ink-soft); }
+.tag { padding: 2px 8px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: rgba(27, 33, 64, 0.08); color: var(--ink-soft); }
 .tag.yt { background: rgba(255, 79, 79, 0.14); color: #b3261e; }
 .tag.ok { background: rgba(31, 157, 106, 0.14); color: #14704b; }
 .empty { padding: 28px; text-align: center; color: var(--ink-mute); grid-column: 1 / -1; }
