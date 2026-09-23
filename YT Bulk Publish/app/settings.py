@@ -157,6 +157,16 @@ class ActivityLog:
     def error(self, message: str) -> None:
         self.write(message, "error")
 
+    def file_only(self, message: str) -> None:
+        """Write technical details to the log file without showing them on screen."""
+        stamp = _dt.datetime.now().strftime("%H:%M:%S")
+        with self._lock:
+            try:
+                with self.path.open("a", encoding="utf-8") as handle:
+                    handle.write(f"[{stamp}] DETAIL  {message}\n")
+            except OSError:
+                pass
+
     def recent(self, since_index: int = 0) -> list[dict]:
         with self._lock:
             return list(self.lines[since_index:])

@@ -62,9 +62,11 @@ def _keep_crash_notes(logs_folder: Path) -> None:
     if sys.stderr is None:
         sys.stderr = notes
     try:
-        # Lines saying "code 0xe0434352" come from errors the window library handles
-        # itself and are harmless; a real crash ends with a full list of threads.
-        faulthandler.enable(file=notes, all_threads=True)
+        # On Windows this also writes a "Windows fatal exception" block for some errors
+        # that Windows or the window library handle afterwards; only a block that is
+        # followed by the program closing is a real crash. Only the thread that failed
+        # is written, because walking the other threads while they run is not safe.
+        faulthandler.enable(file=notes, all_threads=False)
     except (OSError, ValueError, RuntimeError):
         pass
 

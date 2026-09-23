@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import threading
+import traceback
 from pathlib import Path
 
 from . import browser_control, rename, window_picker
@@ -31,7 +32,12 @@ from .studio import Studio, StudioError, connect_studio
 
 SUBTITLE = "Bulk publish, rename and update your YouTube videos"
 
-BUSY_MESSAGE = "The tool is still busy with the last step. Please wait a moment."
+BUSY_MESSAGE = "The tool is still busy with the last step. Please wait a moment, then try again."
+RUNNING_MESSAGE = "Changes are still running. Wait until they finish, or press Stop first."
+UNEXPECTED_MESSAGE = (
+    "Something went wrong in that step. Try again; if it keeps happening, restart the program. "
+    "The details are in the log file (Open log folder)."
+)
 
 
 def _safe(method):
@@ -44,9 +50,11 @@ def _safe(method):
         except (StudioError, DevToolsError, RuntimeError, ValueError) as exc:
             self._log.error(str(exc))
             return {"error": str(exc)}
-        except Exception as exc:  # noqa: BLE001
-            self._log.error(f"Unexpected problem: {exc!r}")
-            return {"error": f"Something unexpected happened: {exc}"}
+        except Exception:  # noqa: BLE001
+            # Technical details go to the log file only; the screen gets plain words.
+            self._log.error("Something went wrong in that step.")
+            self._log.file_only(f"{method.__name__}: {traceback.format_exc()}")
+            return {"error": UNEXPECTED_MESSAGE}
 
     return wrapper
 
@@ -157,6 +165,9 @@ class Api:
 
     @_safe
     def choose_window(self, handle: int) -> dict:
+        if self._runner.running:
+            # Connecting again would close the tab the run is working in.
+            return {"status": "busy", "message": RUNNING_MESSAGE}
         if not self._connect_lock.acquire(blocking=False):
             return {"status": "busy", "message": BUSY_MESSAGE}
         try:
@@ -195,6 +206,8 @@ class Api:
 
     @_safe
     def open_tool_browser(self) -> dict:
+        if self._runner.running:
+            return {"status": "busy", "message": RUNNING_MESSAGE}
         if not self._connect_lock.acquire(blocking=False):
             return {"status": "busy", "message": BUSY_MESSAGE}
         try:
@@ -270,6 +283,8 @@ class Api:
     # ---- videos --------------------------------------------------------------------
     @_safe
     def load_videos(self, source: dict | None = None) -> dict:
+        if self._runner.running:
+            raise RuntimeError(RUNNING_MESSAGE)
         source = source or {}
         kind = str(source.get("kind") or "current")
         value = str(source.get("url") or "")
