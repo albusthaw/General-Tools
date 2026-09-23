@@ -128,13 +128,8 @@ class Studio:
     def goto(self, url: str, wait_for: list[str] | None = None, timeout: float = 45.0) -> None:
         self.log(f"Opening {url}")
         answered = self.page.leave_prompts_answered
-        try:
-            # First defence against "Leave site?"; handlers added another way are
-            # answered by the page link (see Page._answer_dialog).
-            self.page.evaluate("window.onbeforeunload = null; true", timeout=5)
-        except DevToolsError:
-            pass
-        self.page.navigate(url, timeout=timeout)
+        with self.page.answering_dialogs():  # a "Leave site?" question must not freeze the run
+            self.page.navigate(url, timeout=timeout)
         if self.page.leave_prompts_answered != answered:
             self.log("The previous page had unsaved changes; they were left behind.", "warning")
         self.page.wait_ready(timeout=timeout)
@@ -682,15 +677,17 @@ class Studio:
         deadline = time.time() + 30
         saved_readings = 0
         while time.time() < deadline:
-            if self._save_state() == "saved":
+            confirm = self.find_confirmation()
+            if confirm:
+                # A question is showing: answer it, and do not count "saved" until it is gone.
+                self.click(confirm, "confirmation button")
+                saved_readings = 0
+            elif self._save_state() == "saved":
                 saved_readings += 1
                 if saved_readings >= 2:
                     return
             else:
                 saved_readings = 0
-                confirm = self.find_confirmation()
-                if confirm:
-                    self.click(confirm, "confirmation button")
             time.sleep(0.3)
         raise StudioError("YouTube did not confirm that the changes were saved.")
 
@@ -838,11 +835,11 @@ class Studio:
         # YouTube asks one. No fixed waiting: the loop ends as soon as it is closed.
         deadline = time.time() + 8
         while time.time() < deadline:
-            if not self._wizard_open():
-                return
             confirm = self.find_confirmation()
             if confirm:
                 self.click(confirm, "confirmation button")
+            elif not self._wizard_open():
+                return
             time.sleep(0.25)
 
 

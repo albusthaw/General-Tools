@@ -87,6 +87,26 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(result["windows"], [])
             self.assertEqual(pictures["pictures"], {})
 
+    def test_connecting_is_refused_while_changes_run(self):
+        # Connecting again would close the tab the run works in and stop the run.
+        self.api._runner.running = True
+        try:
+            self.assertEqual(self.api.choose_window(123)["status"], "busy")
+            self.assertEqual(self.api.open_tool_browser()["status"], "busy")
+            self.assertIn("still running", self.api.load_videos({"kind": "channel"})["error"])
+        finally:
+            self.api._runner.running = False
+
+    def test_unexpected_problems_show_plain_words(self):
+        from unittest import mock
+
+        with mock.patch("app.api.window_picker.list_windows", side_effect=AttributeError("'NoneType' object has no attribute 'pid'")):
+            result = self.api.list_windows()
+        self.assertIn("Something went wrong", result["error"])
+        self.assertNotIn("NoneType", result["error"])
+        self.assertNotIn("NoneType", " ".join(line["message"] for line in self.api._log.recent()))
+        self.assertIn("NoneType", self.api._log.path.read_text(encoding="utf-8"))
+
     def test_second_connect_press_is_turned_away(self):
         self.assertTrue(self.api._connect_lock.acquire(blocking=False))
         try:

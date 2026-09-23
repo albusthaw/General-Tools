@@ -186,7 +186,10 @@
     $$(".win-card", grid).forEach((card) => card.addEventListener("click", () => chooseWindow(Number(card.dataset.handle))));
   }
 
+  const RUNNING_TEXT = "Changes are still running. Wait until they finish, or press Stop first.";
+
   async function chooseWindow(handle) {
+    if (state.running) { toast(RUNNING_TEXT); return; }
     if (state.connecting) { toast("Please wait, the tool is still connecting."); return; }
     state.connecting = true;
     setConnectButtons(true);
@@ -194,7 +197,7 @@
     renderWindows();
     banner("", "Connecting…", "Checking whether the tool can work inside this window.");
     try {
-      const result = await callWithin(45000, "Connecting took too long. Close the browser window you picked, then use “Open a browser just for this tool”.", "choose_window", handle);
+      const result = await callWithin(45000, "Connecting took too long. Wait a few seconds, close the browser window you picked, then use “Open a browser just for this tool”.", "choose_window", handle);
       handleConnectResult(result);
     } catch (err) {
       banner("bad", "Could not connect", err.message);
@@ -214,7 +217,7 @@
     } else if (result.status === "not_browser") {
       banner("warn", "That is not a browser window", result.message);
     } else if (result.status === "busy") {
-      toast(result.message || "Please wait a moment.");
+      banner("warn", "Still busy", result.message || "Please wait a moment, then try again.");
     } else if (result.status === "waiting_signin") {
       state.connected = true;
       banner("warn", "Please sign in", result.message, "I have signed in", async () => {
@@ -228,12 +231,13 @@
   }
 
   async function openToolBrowser() {
+    if (state.running) { toast(RUNNING_TEXT); return; }
     if (state.connecting) { toast("Please wait, the browser is still opening."); return; }
     state.connecting = true;
     setConnectButtons(true);
     banner("", "Opening a browser…", "A browser window will appear (or come to the front if it is already open). If YouTube asks you to sign in, do it there.");
     try {
-      const result = await callWithin(120000, "The browser is taking too long to open. Close every window of the tool’s browser and press the button again.", "open_tool_browser");
+      const result = await callWithin(120000, "The browser is taking too long to open. Wait a few seconds, close every window of the tool’s browser, then press the button again.", "open_tool_browser");
       handleConnectResult(result);
     } catch (err) {
       banner("bad", "Could not open a browser", err.message);
@@ -260,6 +264,7 @@
   }
 
   async function loadVideos() {
+    if (state.running) { toast(RUNNING_TEXT); return; }
     const status = $("#videos-status");
     const btn = $("#btn-load-videos");
     btn.disabled = true;
