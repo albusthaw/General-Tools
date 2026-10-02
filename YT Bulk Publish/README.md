@@ -89,9 +89,9 @@ A larger live run followed on the same day: 8 further clips were uploaded as dra
 
 - Fixed: the first step could stay on "Looking for open windows" for a long time, and pressing buttons then could close the program. The window list now appears at once and the pictures follow.
 - Fixed: "Open a browser just for this tool" often kept loading without opening a window. It now reuses the tool's browser when it is already open, restarts it when it cannot be reached, and brings it to the front.
-- A second press on a button while the tool is busy is now ignored instead of starting the same job twice. Every step on the first screen has a time limit and a clear message.
+- A second press on a button while the tool is busy is now ignored instead of starting the same job twice, and connecting again while changes run is refused (it used to stop the run). Every step on the first screen has a time limit and a clear message.
 - Publishing a draft is much faster: the tool no longer waits about 40 seconds for the finished upload window, which YouTube only hides. Saving an edited video no longer waits a fixed time either.
-- A page that asks "Leave site?" after a failed video no longer stops the whole run.
+- A page that asks "Leave site?" after a failed video no longer stops the whole run. The tool answers such questions only during its own steps, so your own work in that browser tab keeps the usual warning.
 - "Load videos" reads all channel videos when the open page has no video list.
 - If the program closes by itself, `Logs\Crash notes.txt` now records why.
 

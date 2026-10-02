@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -55,7 +56,9 @@ class WithoutBrowserTest(unittest.TestCase):
         server = serve(json.dumps({"Browser": "Chrome/140", "webSocketDebuggerUrl": "ws://x"}).encode(), "application/json")
         dead_proxy = {"HTTP_PROXY": "http://127.0.0.1:9", "http_proxy": "http://127.0.0.1:9", "NO_PROXY": "", "no_proxy": ""}
         try:
-            with mock.patch.dict(os.environ, dead_proxy):
+            # urllib caches its default opener (and the proxy settings) on first use, so the
+            # cache is cleared here; otherwise going back to plain urlopen would go unnoticed.
+            with mock.patch.dict(os.environ, dead_proxy), mock.patch.object(urllib.request, "_opener", None):
                 self.assertTrue(BrowserEndpoint(port=server.server_address[1]).is_alive(timeout=2))
         finally:
             server.shutdown()
@@ -68,6 +71,27 @@ class WithoutBrowserTest(unittest.TestCase):
         with mock.patch.object(browser_control, "listening_ports", return_value=[]):
             self.assertIsNone(browser_control.find_endpoint(process))
         self.assertLess(time.time() - started, 1.0)
+
+    def test_pop_ups_are_answered_only_during_the_tools_own_steps(self):
+        from app.cdp import Page
+
+        page = Page("ws://127.0.0.1:1/devtools/page/x")
+        sent = []
+        page.send_nowait = lambda method, params=None: sent.append((method, params))
+        page._answer_dialog({"type": "beforeunload"})
+        self.assertEqual(sent, [], "a person using the tab keeps the browser's own question")
+        with page.answering_dialogs():
+            page._answer_dialog({"type": "beforeunload"})
+            page._answer_dialog({"type": "confirm"})
+            page._answer_dialog({"type": "alert"})
+        self.assertEqual(sent, [
+            ("Page.handleJavaScriptDialog", {"accept": True}),
+            ("Page.handleJavaScriptDialog", {"accept": False}),
+            ("Page.handleJavaScriptDialog", {"accept": True}),
+        ])
+        self.assertEqual(page.leave_prompts_answered, 1)
+        page._answer_dialog({"type": "beforeunload"})
+        self.assertEqual(len(sent), 3)
 
     def test_port_file_is_read(self):
         folder = tempfile.mkdtemp(prefix="ytbp-port-")

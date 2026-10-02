@@ -1,6 +1,7 @@
 """Runs the chosen changes over many videos, one after another, in the background."""
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import threading
 import time
@@ -131,7 +132,6 @@ class BatchRunner:
     def _run(self, videos: list[dict], per_video: list[Changes], dry_run: bool, pause: float) -> None:
         mode = "Practice run" if dry_run else "Run"
         self.log.info(f"{mode} started for {len(videos)} video(s).")
-        stopped = False
         try:
             studio = self._studio_getter()
         except Exception as exc:  # noqa: BLE001
@@ -141,6 +141,33 @@ class BatchRunner:
                 self.summary = "Could not reach the browser."
             return
 
+        stopped = False
+        page = getattr(studio, "page", None)
+        answering = page.answering_dialogs() if hasattr(page, "answering_dialogs") else contextlib.nullcontext()
+        try:
+            # The browser's own pop-ups are answered while the run drives the tab.
+            with answering:
+                stopped = self._run_videos(studio, videos, per_video, dry_run, pause)
+        except Exception as exc:  # noqa: BLE001
+            self.log.error(f"The run stopped because of an unexpected problem: {exc}")
+        self._finish(dry_run, stopped)
+
+    def _finish(self, dry_run: bool, stopped: bool) -> None:
+        with self._lock:
+            ok = sum(1 for i in self.items if i["state"] == "done")
+            summary = f"{ok} video(s) updated, {self.failed} problem(s)"
+            if dry_run:
+                summary = f"Practice run finished: {ok} video(s) checked, {self.failed} problem(s)"
+            if stopped:
+                summary += ", stopped early"
+            self.summary = summary
+            self.running = False
+            self.current = ""
+        self.log.info(self.summary)
+
+    def _run_videos(self, studio: Studio, videos: list[dict], per_video: list[Changes], dry_run: bool, pause: float) -> bool:
+        """Work through the videos; returns True when the person pressed Stop."""
+        stopped = False
         for index, (video_dict, changes) in enumerate(zip(videos, per_video)):
             if self._stop.is_set():
                 stopped = True
@@ -193,15 +220,4 @@ class BatchRunner:
                     self.done = index + 1
             if pause and index < len(videos) - 1 and not self._stop.is_set():
                 time.sleep(pause)
-
-        with self._lock:
-            ok = sum(1 for i in self.items if i["state"] == "done")
-            summary = f"{ok} video(s) updated, {self.failed} problem(s)"
-            if dry_run:
-                summary = f"Practice run finished: {ok} video(s) checked, {self.failed} problem(s)"
-            if stopped:
-                summary += ", stopped early"
-            self.summary = summary
-            self.running = False
-            self.current = ""
-        self.log.info(self.summary)
+        return stopped

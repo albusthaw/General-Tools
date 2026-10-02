@@ -6,6 +6,7 @@ WebSocket per tab, so no browser driver has to be bundled with the program.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import time
@@ -84,7 +85,10 @@ class BrowserEndpoint:
             # Older builds accept GET only.
             target = self._request(f"/json/new?{quoted}", method="GET")
         if not isinstance(target, dict) or not target.get("id"):
-            raise DevToolsError("The browser did not open a new tab.")
+            raise DevToolsError(
+                "The browser did not open a new tab. Open YouTube Studio in that browser window yourself, "
+                "then press Refresh and pick the window."
+            )
         return target
 
     def activate(self, target_id: str) -> None:
@@ -123,6 +127,7 @@ class Page:
         self._reader: threading.Thread | None = None
         self._closed = False
         self._fire_and_forget: set[int] = set()
+        self._answering = 0  # > 0 while the tool itself is driving the tab
         self.leave_prompts_answered = 0
 
     # ---- connection -----------------------------------------------------
@@ -143,12 +148,29 @@ class Page:
         self.send("Page.enable")
         self.send("Runtime.enable")
 
+    @contextlib.contextmanager
+    def answering_dialogs(self):
+        """While inside this block, the browser's own pop-ups are answered automatically.
+
+        Only the tool's own steps use it, so a person working in the tab by hand
+        still gets the browser's usual "Leave site?" question.
+        """
+        with self._lock:
+            self._answering += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._answering -= 1
+
     def _answer_dialog(self, params: dict) -> None:
         """Answer the browser's own pop-ups, which would otherwise freeze the tab.
 
         "Leave site?" is accepted (the tool moves on to the next video). Any other
         message is closed the careful way: OK for a plain message, Cancel for a question.
         """
+        if self._answering <= 0:
+            return  # the person is using the tab; leave the question to them
         kind = params.get("type")
         if kind == "beforeunload":
             self.leave_prompts_answered += 1
