@@ -12,9 +12,6 @@ import { FINISHED, type Job, type JobContext, JobError, type Outcome } from "./t
 const CONCURRENCY = 3;
 // New work is only started when at least this much time is left in the run.
 const MIN_TIME_FOR_NEW_WORK_MS = 70_000;
-// One function process can serve several wake-up calls, and the platform stops it
-// a fixed time after it started, so time is counted from when it started.
-const BOOTED_AT = Date.now();
 
 // Jobs this process is working on, so they can be handed back if it is stopped.
 const active = new Map<number, { worker: string; job: Job }>();
@@ -118,7 +115,10 @@ async function runJob(job: Job, workerId: string, deadline: number): Promise<voi
 export async function runWorker(): Promise<void> {
   const workerId = crypto.randomUUID();
   const budgetMs = workerBudgetSeconds() * 1000;
-  const deadline = Math.min(Date.now() + budgetMs, BOOTED_AT + budgetMs);
+  // The platform may reuse one function process for several wake-up calls and stop
+  // it while a job is running. Unfinished jobs are handed back when that happens
+  // (see releaseRunningJobs), and long work keeps its progress in the job's state.
+  const deadline = Date.now() + budgetMs;
   // New work is only started while there is time to finish it in this run.
   const claimUntil = deadline - MIN_TIME_FOR_NEW_WORK_MS;
   const leaseSeconds = Math.ceil(budgetMs / 1000) + 90;

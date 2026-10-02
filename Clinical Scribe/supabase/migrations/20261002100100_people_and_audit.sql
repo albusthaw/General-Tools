@@ -168,9 +168,10 @@ $$;
 revoke execute on function app_private.audit(uuid, text, uuid, uuid, uuid, text, jsonb, text, text) from public;
 
 -- New accounts --------------------------------------------------------------
--- The very first account becomes the administrator. Accounts created by an admin
--- (they carry app_metadata.cs_invited) are active. Anything else, for example a
--- sign-up while public sign-up was switched on by mistake, waits for approval.
+-- The very first account becomes the administrator. Every other new account waits
+-- for approval until the admin function activates it (it does so straight after
+-- creating an account), so an account that appears any other way, for example a
+-- sign-up while public sign-up was switched on by mistake, has no access.
 create or replace function app_private.handle_new_user()
 returns trigger
 language plpgsql
@@ -179,12 +180,10 @@ set search_path = ''
 as $$
 declare
   v_first boolean;
-  v_invited boolean;
   v_name text;
 begin
   perform pg_advisory_xact_lock(hashtext('clinical_scribe.first_admin'));
   select not exists (select 1 from public.profiles) into v_first;
-  v_invited := coalesce((new.raw_app_meta_data ->> 'cs_invited')::boolean, false);
   v_name := left(btrim(coalesce(
     new.raw_user_meta_data ->> 'full_name',
     new.raw_user_meta_data ->> 'name',
@@ -197,14 +196,11 @@ begin
     lower(coalesce(new.email, '')),
     v_name,
     case when v_first then 'admin' else 'user' end,
-    case when v_first or v_invited then 'active' else 'pending' end
+    case when v_first then 'active' else 'pending' end
   );
 
   if v_first then
     perform app_private.audit(new.id, 'account.first_admin', new.id, null, null, '',
-      jsonb_build_object('email', lower(coalesce(new.email, ''))), '');
-  elsif not v_invited then
-    perform app_private.audit(null, 'account.waiting_approval', new.id, null, null, '',
       jsonb_build_object('email', lower(coalesce(new.email, ''))), '');
   end if;
   return new;

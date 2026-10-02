@@ -34,7 +34,6 @@ export async function create({ caller, body }: AdminContext) {
     password,
     email_confirm: true,
     user_metadata: { full_name: fullName },
-    app_metadata: { cs_invited: true },
   });
   if (error || !data?.user) {
     const message = error?.message ?? "";

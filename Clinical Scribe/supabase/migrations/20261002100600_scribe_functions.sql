@@ -1,12 +1,21 @@
 -- Clinical Scribe: what signed-in people can do with recordings and notes.
 -- Every function checks the caller, validates input and keeps credit in step.
 
+-- Length of each audio part in seconds (10 minutes).
 create or replace function app_private.segment_seconds()
 returns integer
 language sql
-immutable
+stable
+security definer
 set search_path = ''
-as $$ select 600 $$;
+as $$
+  select greatest(5, least(1800, coalesce(
+    (select value::integer from app_private.runtime_config where key = 'segment_seconds'),
+    600
+  )));
+$$;
+
+revoke execute on function app_private.segment_seconds() from public;
 
 create or replace function app_private.require_active_user()
 returns uuid

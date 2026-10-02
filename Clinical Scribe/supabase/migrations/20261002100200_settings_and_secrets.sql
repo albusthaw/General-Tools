@@ -228,6 +228,33 @@ $$;
 revoke execute on function public.svc_set_functions_url(text) from public, anon, authenticated;
 grant execute on function public.svc_set_functions_url(text) to service_role;
 
+-- Called by the deploy script after each deploy. Admins are told when the web app
+-- and the server run different versions, and each change of version is logged.
+create or replace function public.svc_set_server_version(p_version text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_old text;
+begin
+  if p_version !~ '^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$' then
+    raise exception 'That does not look like a version number.';
+  end if;
+  select value into v_old from app_private.app_meta where key = 'schema_version' for update;
+  if v_old is distinct from p_version then
+    insert into app_private.app_meta (key, value) values ('schema_version', p_version)
+    on conflict (key) do update set value = excluded.value, updated_at = now();
+    perform app_private.audit(null, 'server.updated', null, null, null, '',
+      jsonb_build_object('from', v_old, 'to', p_version), '');
+  end if;
+end;
+$$;
+
+revoke execute on function public.svc_set_server_version(text) from public, anon, authenticated;
+grant execute on function public.svc_set_server_version(text) to service_role;
+
 -- Public sign-in page settings.
 create or replace function public.get_public_config()
 returns jsonb

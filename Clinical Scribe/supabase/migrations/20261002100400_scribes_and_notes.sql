@@ -76,8 +76,7 @@ on public.scribe_segments for select to authenticated
 using (owner_id = (select auth.uid()) and (select public.is_active_user()));
 
 revoke all on table public.scribe_segments from anon, authenticated;
-grant select (id, scribe_id, owner_id, seq, mime_type, byte_size, duration_seconds, status, created_at)
-  on table public.scribe_segments to authenticated;
+grant select on table public.scribe_segments to authenticated;
 
 create table public.notes (
   id uuid primary key default gen_random_uuid(),
@@ -131,9 +130,7 @@ on public.notes for select to authenticated
 using (owner_id = (select auth.uid()) and (select public.is_active_user()));
 
 revoke all on table public.notes from anon, authenticated;
-grant select (id, scribe_id, owner_id, template_id, template_name, provider, model, status, content,
-              error_message, created_at, completed_at)
-  on table public.notes to authenticated;
+grant select on table public.notes to authenticated;
 
 -- Credit ledger ---------------------------------------------------------------
 create table public.credit_ledger (

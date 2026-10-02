@@ -27,8 +27,10 @@ insert into app_private.app_meta (key, value) values ('schema_version', '1.0.0')
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
 -- Runtime settings the database needs to wake the worker.
+-- segment_seconds is only ever set directly in the database, for automated tests
+-- that need short audio parts; the app uses 10-minute parts otherwise.
 create table app_private.runtime_config (
-  key text primary key check (key in ('functions_url')),
+  key text primary key check (key in ('functions_url', 'segment_seconds')),
   value text not null,
   updated_at timestamptz not null default now()
 );

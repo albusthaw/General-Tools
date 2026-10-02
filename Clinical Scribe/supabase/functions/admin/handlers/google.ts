@@ -1,6 +1,6 @@
 // Google sign-in. Settings are applied to the project's Supabase Auth through the
 // Supabase Management API, using an access token the admin saves here.
-import { projectRef, serviceBase, supabaseUrl } from "../../_shared/env.ts";
+import { projectRef, serviceBase } from "../../_shared/env.ts";
 import { AppError } from "../../_shared/http.ts";
 import { forgetSecret, getSecret, rememberSecret } from "../../_shared/secrets.ts";
 import { adminClient, rpc } from "../../_shared/supabase.ts";
@@ -76,7 +76,6 @@ export async function get(_: AdminContext) {
   return {
     enabled: settings.google_enabled,
     client_id: settings.google_client_id,
-    callback_url: `${supabaseUrl()}/auth/v1/callback`,
     token: await tokenStatus(),
   };
 }
