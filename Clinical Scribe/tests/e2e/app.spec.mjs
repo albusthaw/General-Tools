@@ -200,6 +200,10 @@ test.describe("Android look", () => {
     const start = await centreOf(row);
     await drag(page, { x: start.x + 120, y: start.y }, { x: start.x - 140, y: start.y });
     await expect(page.locator(".swipe-wrap.is-open")).toBeVisible();
+    // A person lifts the finger, then taps. Newer browsers ignore a tap that comes
+    // within a few milliseconds of a fast swipe, as it would stop the swipe's motion.
+    await page.waitForTimeout(600);
+    await expect(page.locator(".swipe-wrap.is-open")).toBeVisible();
     await page.locator(".swipe-wrap.is-open .swipe-action", { hasText: "Rename" }).tap();
     const sheet = page.locator("dialog.sheet[open]");
     await expect(sheet).toBeVisible();
@@ -212,6 +216,8 @@ test.describe("Android look", () => {
     const pressAt = await centreOf(page.locator(".list-row").first());
     await touch(page, [{ type: "touchStart", at: pressAt }, { wait: 800 }, { type: "touchEnd" }]);
     const actions = page.getByRole("menu", { name: "Swiped visit" });
+    await expect(actions).toBeVisible();
+    await page.waitForTimeout(600);
     await expect(actions).toBeVisible();
     await actions.getByRole("menuitem", { name: "Rename" }).tap();
     await page.locator("dialog.sheet[open]").getByLabel("Label").fill("Pressed visit");
