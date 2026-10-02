@@ -13,8 +13,9 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
 /**
- * The notification shown while recording: the time, and Pause or Resume.
- * It never shows the recording label or anything else about the patient.
+ * The notification shown while recording: the time, and Pause or Resume. When the
+ * recording paused by itself, it says why in short. It never shows the recording
+ * label or anything else about the patient.
  */
 final class RecordingNotification {
 
@@ -26,7 +27,7 @@ final class RecordingNotification {
 
     private RecordingNotification() {}
 
-    static Notification build(Context context, boolean paused, long elapsedMs) {
+    static Notification build(Context context, RecorderHub.Snapshot state) {
         createChannel(context);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_recording)
@@ -39,22 +40,31 @@ final class RecordingNotification {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE);
-        if (paused) {
+        if (RecorderHub.PAUSED.equals(state.phase)) {
+            String kind = PauseRules.messageKind(state.reason);
+            String title = context.getString("call".equals(kind) ? R.string.recording_paused_call : R.string.recording_paused);
             builder
-                .setContentTitle(RecordingText.pausedText(context.getString(R.string.recording_paused), elapsedMs))
-                .setContentText(context.getString(R.string.recording_paused_text))
+                .setContentTitle(RecordingText.pausedText(title, state.activeMs))
+                .setContentText(context.getString(pausedTextFor(kind)))
                 .setShowWhen(false)
                 .addAction(R.drawable.ic_action_resume, context.getString(R.string.recording_resume), action(context, RecordingService.ACTION_RESUME, RESUME_REQUEST));
         } else {
             builder
                 .setContentTitle(context.getString(R.string.recording_title))
                 .setContentText(context.getString(R.string.recording_text))
-                .setWhen(System.currentTimeMillis() - elapsedMs)
+                .setWhen(System.currentTimeMillis() - state.activeMs)
                 .setShowWhen(true)
                 .setUsesChronometer(true)
                 .addAction(R.drawable.ic_action_pause, context.getString(R.string.recording_pause), action(context, RecordingService.ACTION_PAUSE, PAUSE_REQUEST));
         }
         return builder.build();
+    }
+
+    private static int pausedTextFor(String kind) {
+        if ("call".equals(kind)) return R.string.recording_paused_call_text;
+        if ("other".equals(kind)) return R.string.recording_paused_other_text;
+        if ("mic".equals(kind)) return R.string.recording_paused_mic_text;
+        return R.string.recording_paused_text;
     }
 
     /** Replaces the shown notification. Skipped when notifications are not allowed (it is hidden then anyway). */

@@ -10,6 +10,7 @@ export const EXPECTED_PERMISSIONS = [
   "android.permission.MODIFY_AUDIO_SETTINGS",
   "android.permission.FOREGROUND_SERVICE",
   "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+  "android.permission.WAKE_LOCK",
   "android.permission.POST_NOTIFICATIONS",
   "android.permission.VIBRATE",
   `${APP_ID}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,

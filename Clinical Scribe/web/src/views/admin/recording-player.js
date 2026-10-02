@@ -23,7 +23,7 @@ function partRow(row, part, count, urls) {
       try {
         const blob = await recordingPart(row.scribe_id, part.seq, { download: true });
         const day = String(row.recorded_at).slice(0, 10);
-        const extension = /mp4|m4a/.test(part.mime_type) ? "m4a" : /ogg/.test(part.mime_type) ? "ogg" : "webm";
+        const extension = /mp4|m4a/.test(part.mime_type) ? "m4a" : /ogg/.test(part.mime_type) ? "ogg" : /aac/.test(part.mime_type) ? "aac" : "webm";
         const saved = await saveFile(new Blob([blob], { type: part.mime_type }), `clinical-scribe-${day}-part-${part.seq}.${extension}`);
         if (saved) toast(saved === "saved" ? "The audio is saved. It is written in the audit log." : "Download started. It is written in the audit log.");
       } catch (error) {

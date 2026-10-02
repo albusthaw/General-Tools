@@ -7,8 +7,6 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
-import android.view.Window;
-import android.view.WindowManager;
 import androidx.activity.result.ActivityResult;
 import androidx.core.app.NotificationManagerCompat;
 import com.getcapacitor.JSObject;
@@ -21,8 +19,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import java.io.IOException;
-import java.lang.ref.WeakReference;
 import java.security.GeneralSecurityException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 
 /**
@@ -40,32 +39,45 @@ public class ScribeNativePlugin extends Plugin {
 
     private static final Pattern STORAGE_NAME = Pattern.compile("[A-Za-z0-9._-]{1,200}");
     private static final int MAX_STORED_LENGTH = 256 * 1024;
-    private static final long MAX_RECORDING_MS = 24L * 60 * 60 * 1000;
 
-    private static volatile WeakReference<ScribeNativePlugin> current = new WeakReference<>(null);
-
+    private final ExecutorService work = Executors.newSingleThreadExecutor();
     private SecureStore store;
     private FileSaver files;
+    private RecorderHub hub;
+    private final RecorderHub.Observer events = new RecorderHub.Observer() {
+        @Override
+        public void onState(RecorderHub.Snapshot state) {
+            notifyListeners("recorderState", RecorderCalls.state(state));
+        }
+
+        @Override
+        public void onPart(String scribeId, int seq, long durationMs) {
+            notifyListeners("recorderPart", RecorderCalls.part(scribeId, seq, durationMs));
+        }
+
+        @Override
+        public void onLevel(float level) {
+            // The level only feeds the sound ring, so it is not sent while the app is hidden.
+            if (!getBridge().getApp().isActive()) return;
+            JSObject data = new JSObject();
+            data.put("level", level);
+            notifyListeners("recorderLevel", data);
+        }
+    };
 
     @Override
     public void load() {
         store = new SecureStore(getContext());
         files = new FileSaver(getContext().getContentResolver());
-        current = new WeakReference<>(this);
+        hub = RecorderHub.get();
+        hub.init(getContext());
+        hub.addObserver(events);
     }
 
     @Override
     protected void handleOnDestroy() {
         if (files != null) files.cancelAll();
-    }
-
-    /** Pause or Resume pressed in the recording notification. */
-    static void sendRecordingAction(String action) {
-        ScribeNativePlugin plugin = current.get();
-        if (plugin == null) return;
-        JSObject data = new JSObject();
-        data.put("action", action);
-        plugin.notifyListeners("recordingAction", data);
+        if (hub != null) hub.removeObserver(events);
     }
 
     /** Web links open in the phone's browser; any other kind of link is ignored. */
@@ -76,50 +88,106 @@ public class ScribeNativePlugin extends Plugin {
         return true;
     }
 
-    // Screen and recording
+    // Recording (RecorderHub records by itself, so it carries on with the screen off)
 
     @PluginMethod
-    public void keepAwake(PluginCall call) {
-        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
-        Activity activity = getActivity();
-        activity.runOnUiThread(() -> {
-            Window window = activity.getWindow();
-            if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        });
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void startRecording(PluginCall call) {
-        long now = System.currentTimeMillis();
-        long startedAt = call.getData().optLong("startedAt", now);
-        if (startedAt > now || startedAt < now - MAX_RECORDING_MS) startedAt = now;
+    public void recorderStart(PluginCall call) {
+        String id = RecorderCalls.scribeId(call);
+        if (id == null) return;
+        int segmentSeconds = RecorderCalls.clamp(call.getData().optLong("segmentSeconds", 600), 5, 3600);
+        int maxSeconds = RecorderCalls.clamp(call.getData().optLong("maxSeconds", 4 * 3600), 1, 24 * 3600);
         // Android only lets the microphone work with the screen off when the
         // recording starts while the app is open and the microphone is allowed.
-        if (getPermissionState("microphone") != PermissionState.GRANTED || !getBridge().getApp().isActive()) {
-            call.reject("Not allowed now");
+        if (getPermissionState("microphone") != PermissionState.GRANTED) {
+            call.reject("The microphone is not allowed", "mic_denied");
             return;
         }
-        try {
-            RecordingService.start(getContext(), startedAt);
-            call.resolve();
-        } catch (IllegalStateException | SecurityException e) {
-            call.reject("Not allowed now");
+        if (!getBridge().getApp().isActive()) {
+            call.reject("Recording can only start while the app is open", "not_allowed");
+            return;
         }
+        String problem = hub.start(id, segmentSeconds, maxSeconds);
+        if (problem != null) call.reject("Recording could not start", problem);
+        else call.resolve(RecorderCalls.state(hub.snapshot()));
     }
 
     @PluginMethod
-    public void updateRecording(PluginCall call) {
-        boolean paused = Boolean.TRUE.equals(call.getBoolean("paused", false));
-        long elapsedMs = Math.max(0, Math.min(call.getData().optLong("elapsedMs", 0), MAX_RECORDING_MS));
-        RecordingService.update(getContext(), paused, elapsedMs);
+    public void recorderPause(PluginCall call) {
+        hub.pause(PauseRules.USER);
+        call.resolve(RecorderCalls.state(hub.snapshot()));
+    }
+
+    @PluginMethod
+    public void recorderResume(PluginCall call) {
+        hub.resume();
+        call.resolve(RecorderCalls.state(hub.snapshot()));
+    }
+
+    @PluginMethod
+    public void recorderStop(PluginCall call) {
+        work.execute(() -> call.resolve(RecorderCalls.state(hub.stop())));
+    }
+
+    @PluginMethod
+    public void recorderDiscard(PluginCall call) {
+        work.execute(() -> {
+            hub.discard();
+            call.resolve(RecorderCalls.state(hub.snapshot()));
+        });
+    }
+
+    @PluginMethod
+    public void recorderStatus(PluginCall call) {
+        call.resolve(RecorderCalls.state(hub.snapshot()));
+    }
+
+    @PluginMethod
+    public void recorderDone(PluginCall call) {
+        String id = RecorderCalls.scribeId(call);
+        if (id == null) return;
+        hub.done(id);
         call.resolve();
     }
 
     @PluginMethod
-    public void stopRecording(PluginCall call) {
-        RecordingService.stop(getContext());
+    public void pendingParts(PluginCall call) {
+        String id = RecorderCalls.scribeId(call);
+        if (id == null) return;
+        RecorderHub.Snapshot state = hub.snapshot();
+        int writing = id.equals(state.scribeId) ? state.writingSeq : 0;
+        try {
+            call.resolve(RecorderCalls.parts(hub.files().list(id, writing)));
+        } catch (IOException | RuntimeException e) {
+            call.reject("The parts could not be read", "read_failed");
+        }
+    }
+
+    @PluginMethod
+    public void recordingsOnPhone(PluginCall call) {
+        call.resolve(RecorderCalls.recordings(hub.files().recordings()));
+    }
+
+    @PluginMethod
+    public void readPart(PluginCall call) {
+        RecorderCalls.readPart(call, hub.files());
+    }
+
+    @PluginMethod
+    public void deletePart(PluginCall call) {
+        String id = RecorderCalls.scribeId(call);
+        if (id == null) return;
+        int seq = RecorderCalls.seq(call);
+        if (seq == 0) return;
+        if (!RecorderCalls.isBeingWritten(id, seq)) hub.files().delete(id, seq);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void deleteParts(PluginCall call) {
+        String id = RecorderCalls.scribeId(call);
+        if (id == null) return;
+        RecorderHub.Snapshot state = hub.snapshot();
+        if (!(id.equals(state.scribeId) && state.live())) hub.files().deleteAll(id);
         call.resolve();
     }
 
