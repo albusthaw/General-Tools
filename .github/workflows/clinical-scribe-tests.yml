@@ -1,0 +1,72 @@
+name: Test Clinical Scribe
+
+# Runs every Clinical Scribe test on a local Supabase stack with stand-in AI
+# services: unit tests, server tests, deploy script tests and browser tests at
+# desktop and phone sizes. No real keys or projects are used. It runs when the
+# tool changes, or by hand from the Actions tab.
+on:
+  push:
+    paths:
+      - "Clinical Scribe/**"
+      - ".github/workflows/clinical-scribe-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-clinical-scribe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run the tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: Clinical Scribe
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            Clinical Scribe/web/package-lock.json
+            Clinical Scribe/tests/package-lock.json
+
+      - name: Set up the Supabase command-line tool
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.119.0
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install packages and the test browser
+        run: |
+          npm ci --prefix web --no-audit --no-fund
+          npm ci --prefix tests --no-audit --no-fund
+          cd tests && npx playwright install --with-deps chromium
+
+      - name: Start the local Supabase stack
+        run: supabase start
+
+      - name: Run all tests
+        run: bash tests/run-local.sh all
+
+      - name: Keep the browser test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clinical-scribe-test-results
+          path: Clinical Scribe/tests/e2e/output
+          if-no-files-found: ignore

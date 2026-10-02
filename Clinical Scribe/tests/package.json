@@ -1,0 +1,16 @@
+{
+  "name": "clinical-scribe-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mock": "node mock-ai/server.mjs",
+    "test:unit": "node --test unit/*.test.mjs",
+    "test:api": "node --test --test-concurrency=1 api/*.test.mjs",
+    "test:deploy": "node --test --test-concurrency=1 deploy/*.test.mjs",
+    "test:e2e": "playwright test --config e2e/playwright.config.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@supabase/supabase-js": "2.117.2"
+  }
+}

@@ -1,0 +1,463 @@
+/* App shell: side menu, top bar, drawer, content column and phone tab bar. */
+.app-root {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.glass-float {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-float), 0 0 0 1px var(--glass-edge), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: var(--blur-float);
+  -webkit-backdrop-filter: var(--blur-float);
+}
+
+.glass-card {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card), 0 0 0 1px var(--glass-edge), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: var(--blur-card);
+  -webkit-backdrop-filter: var(--blur-card);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-float,
+  .glass-card {
+    background: var(--glass-solid);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-float,
+  .glass-card {
+    background: var(--glass-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* Brand mark */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(23, 71, 176, 0.3);
+}
+
+.brand-mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+
+/* Side menu */
+.sidebar {
+  position: fixed;
+  z-index: 30;
+  top: 16px;
+  bottom: 16px;
+  left: 16px;
+  width: calc(var(--sidebar) - 16px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  padding: 18px 12px 12px;
+  transition: transform var(--t-med) var(--ease), visibility var(--t-med);
+}
+
+.sidebar .brand {
+  padding: 2px 8px 18px;
+}
+
+.nav {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+}
+
+.nav-heading {
+  margin: 18px 10px 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease;
+}
+
+.nav-item svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+}
+
+.nav-item[aria-current="page"] {
+  background: var(--blue-100);
+  color: var(--blue-700);
+  box-shadow: inset 0 0 0 1px rgba(36, 99, 208, 0.18);
+}
+
+.nav-item .nav-badge {
+  margin-left: auto;
+}
+
+.sidebar-foot {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.account-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+}
+
+.account-button:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--sky-200), var(--periwinkle-200));
+  color: var(--blue-800);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.account-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.account-name {
+  font-weight: 700;
+  font-size: 14.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-role {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* Top bar (tablets and phones) */
+.topbar {
+  position: fixed;
+  z-index: 25;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--topbar) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 10px 0;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  border-radius: 0;
+  border-width: 0 0 1px;
+}
+
+.topbar-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  background: rgba(19, 35, 63, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-med) ease;
+}
+
+/* Content */
+.content {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin-left: var(--sidebar);
+  padding: 32px 32px 48px;
+}
+
+.content-inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  animation: rise var(--t-med) var(--ease);
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+.page-head .head-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+/* Clinical Scribe tabs */
+.module-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  margin-bottom: 22px;
+  width: fit-content;
+  border-radius: var(--radius-md);
+}
+
+.module-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+
+.module-tab svg {
+  width: 18px;
+  height: 18px;
+}
+
+.module-tab:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.module-tab[aria-current="page"] {
+  background: #fff;
+  color: var(--blue-700);
+  box-shadow: var(--shadow-press), 0 0 0 1px rgba(36, 99, 208, 0.14);
+}
+
+.tabbar {
+  display: none;
+}
+
+/* Recording reminder shown when the recorder is busy on another page */
+.recording-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--bad-bg);
+  color: var(--bad);
+  font-weight: 700;
+  font-size: 13.5px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.recording-pill .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+.sidebar .recording-pill {
+  margin: 0 8px 12px;
+  justify-content: center;
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Tablets: the side menu becomes a drawer */
+@media (max-width: 1023px) {
+  .topbar {
+    display: flex;
+  }
+
+  .sidebar {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(300px, 86vw);
+    /* Fully opaque: menu text must never mix with the page behind it. */
+    background: #f9fbff;
+    border-radius: 0 24px 24px 0;
+    padding-top: calc(18px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-105%);
+    visibility: hidden;
+  }
+
+  .shell.drawer-open .sidebar {
+    transform: none;
+    visibility: visible;
+  }
+
+  .shell.drawer-open .drawer-scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .content {
+    margin-left: 0;
+    padding: calc(var(--topbar) + env(safe-area-inset-top, 0px) + 20px) 20px 40px;
+  }
+
+  .page-head h1 {
+    font-size: 28px;
+  }
+}
+
+/* Phones */
+@media (max-width: 759px) {
+  body {
+    font-size: 15.5px;
+  }
+
+  .content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .shell.has-tabbar .content {
+    padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom, 0px) + 28px);
+  }
+
+  .page-head {
+    margin-bottom: 16px;
+  }
+
+  .page-head h1 {
+    font-size: 26px;
+  }
+
+  .page-head .head-actions {
+    width: 100%;
+  }
+
+  .page-head .head-actions > .btn {
+    flex: 1;
+  }
+
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .module-tabs.desktop-only {
+    display: none;
+  }
+
+  .shell.has-tabbar .tabbar {
+    position: fixed;
+    z-index: 24;
+    left: 12px;
+    right: 12px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    height: var(--tabbar);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 6px;
+    border-radius: 22px;
+  }
+
+  .tabbar .module-tab {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-height: 0;
+    padding: 0;
+    font-size: 12.5px;
+    border-radius: 16px;
+  }
+
+  .tabbar .module-tab svg {
+    width: 21px;
+    height: 21px;
+  }
+}

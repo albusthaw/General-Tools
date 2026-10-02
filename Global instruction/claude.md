@@ -4,7 +4,7 @@ This file is the entry point for any assistant or contributor working in this re
 
 ## 1. What this repository is
 
-General Tools is a collection of small, practical desktop tools. Each tool lives in its own top-level folder (for example `YT Bulk Publish/`) with its own README, source code, tests and a `Release/` folder for the built program. The root README gives brief information about every tool.
+General Tools is a collection of small, practical tools, mostly for the desktop. Each tool lives in its own top-level folder (for example `YT Bulk Publish/`) with its own README, source code, tests and a `Release/` folder for the built program. The root README gives brief information about every tool.
 
 ## 2. Files you must read
 
@@ -39,3 +39,4 @@ The rules in `agent.md` apply to every session and take priority when files seem
 ## 5. Current tools
 
 - `YT Bulk Publish/`: Windows tool that publishes, renames and updates many YouTube Studio videos in one go. Its engine drives the user's own browser through the browser's remote-control port; see the tool README for how it works and how to test it against the included mock Studio pages.
+- `Clinical Scribe/`: web app on the owner's Supabase project that records consultations and writes clinical notes. It is published rather than built into a file: the workflow `.github/workflows/clinical-scribe-deploy.yml` deploys and upgrades it, and `tests/run-local.sh` tests it against a local Supabase stack with stand-in AI services. Its plan is in `project.md` and its look and wording rules in `design.md`.

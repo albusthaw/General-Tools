@@ -1,0 +1,69 @@
+/* Design tokens. See design.md for where each one is used. */
+:root {
+  color-scheme: light;
+
+  --bg-0: #f4f7fc;
+  --bg-1: #e8eef8;
+  --ink: #13233f;
+  --ink-2: #3c4a63;
+  --ink-3: #5a6880;
+  --line: rgba(19, 35, 63, 0.12);
+  --line-strong: rgba(19, 35, 63, 0.2);
+
+  --blue-800: #123a91;
+  --blue-700: #1747b0;
+  --blue-600: #2463d0;
+  --blue-500: #3b7be3;
+  --blue-100: #e3edff;
+  --blue-50: #f0f5ff;
+  --sky-200: #cfe4ff;
+  --ice-200: #dcebff;
+  --periwinkle-200: #d6dcff;
+  --aqua-200: #c8efea;
+
+  --ok: #167a52;
+  --ok-bg: rgba(22, 122, 82, 0.12);
+  --warn: #8a5300;
+  --warn-bg: rgba(214, 140, 18, 0.16);
+  --warn-line: rgba(176, 108, 0, 0.45);
+  --bad: #c22a45;
+  --bad-bg: rgba(194, 42, 69, 0.1);
+  --info-bg: rgba(36, 99, 208, 0.1);
+
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-strong: rgba(255, 255, 255, 0.84);
+  --glass-solid: rgba(255, 255, 255, 0.96);
+  --glass-border: rgba(255, 255, 255, 0.9);
+  --glass-edge: rgba(19, 35, 63, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
+  --field: rgba(255, 255, 255, 0.92);
+
+  --primary: linear-gradient(135deg, var(--blue-700), var(--blue-600));
+  --danger: linear-gradient(135deg, #c22a45, #e0503d);
+
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 18px 48px rgba(22, 40, 80, 0.12);
+  --shadow-float: 0 8px 24px rgba(22, 40, 80, 0.1);
+  --shadow-press: 0 2px 8px rgba(22, 40, 80, 0.08);
+
+  --blur-float: blur(24px) saturate(160%);
+  --blur-card: blur(16px) saturate(150%);
+
+  --font-ui: "Source Sans 3 Variable", "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Source Serif 4 Variable", "Source Serif 4", Georgia, "Times New Roman", serif;
+
+  --sidebar: 264px;
+  --topbar: 60px;
+  --tabbar: 64px;
+  --content-max: 1120px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-fast: 150ms;
+  --t-med: 220ms;
+}

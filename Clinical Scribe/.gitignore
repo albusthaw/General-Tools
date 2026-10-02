@@ -1,0 +1,13 @@
+# Local settings and secrets
+supabase/functions/.env
+supabase/.env
+web/.env
+web/.env.local
+*.local
+
+# Generated files
+web/node_modules/
+web/dist/
+tests/node_modules/
+tests/e2e/output/
+tests/e2e/screenshots/
