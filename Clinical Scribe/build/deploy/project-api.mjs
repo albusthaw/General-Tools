@@ -33,6 +33,19 @@ export function projectApi(settings, secretKey, { waitMs = 90_000 } = {}) {
     }
   }
 
+  // One try only; null when the database does not have the function (yet).
+  async function optionalRpc(name, args = {}) {
+    const response = await request(`${settings.projectUrl}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers,
+      body: args,
+      what: `Asking the database for ${name}`,
+    });
+    if (response.ok) return response.data;
+    if (response.data?.code === "PGRST202" || response.status === 404) return null;
+    throw new DeployError(`The server could not answer ${name} (status ${response.status}). ${problemText(response)}`.trim());
+  }
+
   async function hasAccounts() {
     const response = await request(`${settings.projectUrl}/auth/v1/admin/users?page=1&per_page=1`, {
       headers,
@@ -61,5 +74,5 @@ export function projectApi(settings, secretKey, { waitMs = 90_000 } = {}) {
     throw new DeployError(`The first admin could not be created (status ${response.status}). ${problemText(response)}`.trim());
   }
 
-  return { rpc, hasAccounts, createAccount };
+  return { rpc, optionalRpc, hasAccounts, createAccount };
 }

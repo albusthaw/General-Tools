@@ -32,6 +32,7 @@ const SETTING_LABELS = {
 export const GROUPS = [
   { value: "", label: "All activity" },
   { value: "review", label: "Record reviews" },
+  { value: "recording", label: "Recording audio" },
   { value: "user", label: "People" },
   { value: "credit", label: "Transcription minutes" },
   { value: "settings", label: "AI settings" },
@@ -115,6 +116,18 @@ export function describe(entry) {
       break;
     case "secret.checked":
       text = `${actor} checked the ${SECRET[d.secret] ?? "key"}: ${d.ok ? "it works" : "it did not work"}`;
+      break;
+    case "recording.opened":
+      text = `${actor} opened the audio of ${target}'s recording${d.title ? ` "${d.title}"` : ""}`;
+      if (d.recorded_at) details.push(["Recorded", dateTime(d.recorded_at)]);
+      if (d.parts !== undefined) details.push(["Parts", String(d.parts)]);
+      break;
+    case "recording.downloaded":
+      text = `${actor} downloaded part ${d.part ?? ""} of the audio of ${target}'s recording${d.title ? ` "${d.title}"` : ""}`;
+      if (d.recorded_at) details.push(["Recorded", dateTime(d.recorded_at)]);
+      break;
+    case "settings.models_refreshed":
+      text = `${actor} updated the AI model lists`;
       break;
     case "settings.ai_updated":
       text = `${actor} changed AI settings`;

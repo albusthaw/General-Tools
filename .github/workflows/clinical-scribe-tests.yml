@@ -42,7 +42,7 @@ jobs:
             Clinical Scribe/tests/package-lock.json
 
       - name: Set up the Supabase command-line tool
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v2
         with:
           version: 2.119.0
 
@@ -65,7 +65,7 @@ jobs:
 
       - name: Keep the browser test results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: clinical-scribe-test-results
           path: Clinical Scribe/tests/e2e/output

@@ -27,11 +27,17 @@ interface RawResult {
 }
 
 // Models offered in AI settings. ElevenLabs has no public list of speech-to-text
-// models, so the current ones are listed here; any other name can be typed in.
+// models, so the current ones are listed here (scribe_v1 is retired); any other
+// name can be typed in.
 export const ELEVENLABS_MODELS = [
-  { id: "scribe_v2_medical", label: "Scribe v2 Medical (clinical audio)" },
-  { id: "scribe_v2", label: "Scribe v2 (general)" },
+  { id: "scribe_v2_medical", label: "Scribe v2 Medical", note: "Made for clinical audio", recommended: true },
+  { id: "scribe_v2", label: "Scribe v2", note: "General speech" },
 ];
+
+function speechToTextUrl(zeroRetention: boolean): string {
+  // Zero retention is asked for in the address, not in the form.
+  return `${serviceBase("elevenlabs")}/v1/speech-to-text${zeroRetention ? "?enable_logging=false" : ""}`;
+}
 
 export async function transcribe(options: {
   apiKey: string;
@@ -49,9 +55,8 @@ export async function transcribe(options: {
   form.append("timestamps_granularity", "word");
   form.append("tag_audio_events", "false");
   if (options.language) form.append("language_code", options.language.split("-")[0]);
-  if (options.zeroRetention) form.append("enable_logging", "false");
 
-  const raw = await sendJson<RawResult>("elevenlabs", `${serviceBase("elevenlabs")}/v1/speech-to-text`, {
+  const raw = await sendJson<RawResult>("elevenlabs", speechToTextUrl(Boolean(options.zeroRetention)), {
     method: "POST",
     headers: { "xi-api-key": options.apiKey, Accept: "application/json" },
     body: form,
@@ -102,7 +107,7 @@ export async function checkKey(apiKey: string, model: string): Promise<void> {
   const form = new FormData();
   form.append("model_id", model);
   form.append("file", silentWav(1), "check.wav");
-  await send("elevenlabs", `${serviceBase("elevenlabs")}/v1/speech-to-text`, {
+  await send("elevenlabs", speechToTextUrl(false), {
     method: "POST",
     headers: { "xi-api-key": apiKey, Accept: "application/json" },
     body: form,

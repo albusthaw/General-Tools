@@ -1,6 +1,7 @@
 // Gemini: Files API (audio upload) and Interactions API (transcription and writing).
 import { serviceBase } from "../env.ts";
 import { ProviderError } from "../errors.ts";
+import { type ModelChoice, mergeChoices } from "../models.ts";
 import { send, sendJson } from "./request.ts";
 
 export interface GeminiFile {
@@ -192,8 +193,10 @@ export type InteractionState = "done" | "running" | "failed";
 export function interactionState(interaction: Interaction): InteractionState {
   const status = String(interaction?.status ?? "").toLowerCase();
   if (["completed", "complete", "succeeded", "done"].includes(status)) return "done";
-  if (["failed", "cancelled", "canceled", "expired", "error"].includes(status)) return "failed";
-  if (status === "incomplete") return interactionText(interaction).trim() ? "done" : "failed";
+  // "requires_action" only happens with tools, which are never used here.
+  if (["failed", "cancelled", "canceled", "expired", "error", "requires_action"].includes(status)) return "failed";
+  // Stopped early (for example at the output limit): use the text if there is any.
+  if (status === "incomplete" || status === "budget_exceeded") return interactionText(interaction).trim() ? "done" : "failed";
   if (!status && interactionText(interaction).trim()) return "done";
   return "running";
 }
@@ -238,15 +241,34 @@ export function audioSecondsFromTokens(tokens: number | null): number | null {
   return tokens && tokens > 0 ? Math.round((tokens / 32) * 100) / 100 : null;
 }
 
-export interface ModelChoice {
-  id: string;
-  label: string;
+export type Purpose = "transcription" | "text";
+
+// Models known to work for each job, shown first and marked. Gemini's own list
+// adds the others it offers to the key.
+export const GEMINI_MODELS: Record<Purpose, ModelChoice[]> = {
+  transcription: [
+    { id: "gemini-3.5-transcribe", label: "Gemini 3.5 Transcribe", note: "Made for transcription, with speaker labels", recommended: true },
+    { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", note: "General model that also accepts audio" },
+  ],
+  text: [
+    { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", note: "Fast and capable", recommended: true },
+  ],
+};
+
+const NOT_FOR_TEXT =
+  /(image|tts|live|embedding|robotics|veo|lyria|imagen|aqa|computer-use|native-audio|translate|omni|deep-research|antigravity|nano-banana|transcribe)/i;
+
+// Which models from Gemini's list suit a job. Transcription offers only models made
+// for it, and never the live-streaming ones, which cannot take a recorded file.
+export function suitsPurpose(id: string, purpose: Purpose): boolean {
+  if (!/^gemini-/.test(id)) return false;
+  if (purpose === "transcription") return /transcribe/i.test(id) && !/live/i.test(id);
+  return !NOT_FOR_TEXT.test(id);
 }
 
-const NOT_FOR_TEXT = /(image|tts|live|embedding|robotics|veo|lyria|imagen|aqa|computer-use|native-audio|translate|omni|deep-research|antigravity|nano-banana)/i;
-
-export async function listModels(apiKey: string, purpose: "transcription" | "text"): Promise<ModelChoice[]> {
-  const found: ModelChoice[] = [];
+/** Every model Gemini offers to this key, as { id, label }. */
+export async function availableModels(apiKey: string): Promise<ModelChoice[]> {
+  const found = new Map<string, ModelChoice>();
   let pageToken = "";
   for (let page = 0; page < 5; page++) {
     const url = `${base()}/v1beta/models?pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
@@ -258,17 +280,17 @@ export async function listModels(apiKey: string, purpose: "transcription" | "tex
     );
     for (const model of result.models ?? []) {
       const id = String(model.name ?? "").replace(/^models\//, "");
-      if (!/^gemini-/.test(id)) continue;
-      const transcribeModel = /transcribe/i.test(id);
-      if (purpose === "text" && (transcribeModel || NOT_FOR_TEXT.test(id))) continue;
-      if (purpose === "transcription" && !transcribeModel && NOT_FOR_TEXT.test(id)) continue;
-      found.push({ id, label: String(model.displayName ?? id) });
+      if (/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/.test(id)) found.set(id, { id, label: String(model.displayName ?? id).slice(0, 80) });
     }
     pageToken = result.nextPageToken ?? "";
     if (!pageToken) break;
   }
-  const unique = new Map(found.map((m) => [m.id, m]));
-  return [...unique.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return [...found.values()];
+}
+
+/** The choices for one job, from the models Gemini offers to the key. */
+export function choicesFor(purpose: Purpose, available: ModelChoice[]): ModelChoice[] {
+  return mergeChoices(GEMINI_MODELS[purpose], available.filter((m) => suitsPurpose(m.id, purpose)), available);
 }
 
 export async function checkKey(apiKey: string): Promise<void> {
@@ -277,4 +299,40 @@ export async function checkKey(apiKey: string): Promise<void> {
 
 export function isTranscribeModel(model: string): boolean {
   return /transcribe/i.test(model);
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+function checkTest(interaction: Interaction, purpose: Purpose): void {
+  if (interactionState(interaction) !== "failed") return;
+  const detail = interactionError(interaction) || "no answer";
+  throw new ProviderError(purpose === "transcription" ? "bad_request" : "invalid_output", "gemini", `Test failed: ${detail}`);
+}
+
+// Tiny requests that show whether a model works for a job with this key.
+export async function testText(apiKey: string, model: string): Promise<void> {
+  const interaction = await createInteraction(apiKey, {
+    model,
+    input: "Reply with the single word: ready",
+    generation_config: { thinking_level: "low", max_output_tokens: 256 },
+    store: false,
+  }, 60_000);
+  checkTest(interaction, "text");
+}
+
+export async function testAudio(apiKey: string, model: string, wav: Uint8Array): Promise<void> {
+  const audio = { type: "audio", data: toBase64(wav), mime_type: "audio/wav" };
+  const body = isTranscribeModel(model)
+    ? { model, input: [audio], generation_config: { transcription_config: { mode: { type: "verbatim" } } }, store: false }
+    : {
+      model,
+      input: [{ type: "text", text: "Transcribe this recording." }, audio],
+      generation_config: { thinking_level: "low", max_output_tokens: 256 },
+      store: false,
+    };
+  checkTest(await createInteraction(apiKey, body, 60_000), "transcription");
 }

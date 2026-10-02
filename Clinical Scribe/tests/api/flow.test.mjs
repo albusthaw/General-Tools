@@ -51,6 +51,30 @@ async function recordAndFinish(client, { templateId = null, seconds = 20 } = {})
   return scribe;
 }
 
+// Fetches one part of a recording's audio the way the web app does.
+async function audioPart(client, scribeId, seq, download = false) {
+  const { data } = await client.auth.getSession();
+  const response = await fetch(`${localStack().url}/functions/v1/admin`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${data.session.access_token}`,
+      apikey: localStack().publishableKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ action: "recordings.part", scribe_id: scribeId, seq, download }),
+  });
+  const body = Buffer.from(await response.arrayBuffer());
+  return { status: response.status, type: response.headers.get("content-type"), bytes: body.length, body };
+}
+
+async function waitTranscribed(client, scribeId) {
+  return await waitFor(async () => {
+    const { data } = await client.from("scribes").select("status, error_message").eq("id", scribeId).single();
+    if (data.status === "failed") throw new Error(`Processing failed: ${data.error_message}`);
+    return data.status === "transcribed";
+  }, { label: "transcript" });
+}
+
 describe("Clinical Scribe server", () => {
   before(async () => {
     localStack();
@@ -96,9 +120,12 @@ describe("Clinical Scribe server", () => {
     assert.ok(!JSON.stringify(settings).includes("test-gemini-key"));
     const check = await invoke(state.admin, "admin", { action: "keys.check", name: "elevenlabs_api_key" });
     assert.equal(check.data.ok, true);
-    const models = await invoke(state.admin, "admin", { action: "models.list", provider: "gemini", purpose: "text" });
-    assert.ok(models.data.models.some((m) => m.id === "gemini-3.8-flash"));
-    assert.ok(!models.data.models.some((m) => m.id.includes("tts")));
+    // Before the first update, the model lists are the built-in ones known to work.
+    const catalog = await invoke(state.admin, "admin", { action: "models.catalog" });
+    const geminiText = catalog.data.lists.find((list) => list.provider === "gemini" && list.purpose === "text");
+    assert.equal(geminiText.source, "built_in");
+    assert.ok(geminiText.models.some((m) => m.id === "gemini-3.8-flash" && m.recommended));
+    assert.equal(catalog.data.lists.length, 4);
   });
 
   it("reports a refused key in plain words", async () => {
@@ -321,6 +348,142 @@ describe("Clinical Scribe server", () => {
     assert.equal(friendlyCode(bobReview.error), "not_allowed");
   });
 
+  it("lists every recording for admins and opens audio only with a logged reason", async () => {
+    const { data: rows, error } = await state.admin.rpc("admin_list_recordings", {});
+    assert.equal(error, null, error?.message);
+    const row = rows.find((r) => r.scribe_id === state.scribeId);
+    assert.equal(row.audio_state, "kept");
+    assert.equal(row.owner_email, ALICE.email);
+    assert.ok(row.keep_until, "audio is kept for the retention period");
+    assert.ok(!("title" in row) && !("transcript" in row), "the list holds no labels or transcripts");
+
+    const asUser = await state.alice.rpc("admin_list_recordings", {});
+    assert.equal(friendlyCode(asUser.error), "not_allowed");
+
+    const shortReason = await invoke(state.admin, "admin", { action: "recordings.unlock", scribe_id: state.scribeId, reason: "short", confirmed: true });
+    assert.equal(shortReason.error.code, "invalid_input");
+    const unconfirmed = await invoke(state.admin, "admin", { action: "recordings.unlock", scribe_id: state.scribeId, reason: "Complaint review of this visit", confirmed: false });
+    assert.equal(unconfirmed.error.code, "not_confirmed");
+    const early = await audioPart(state.admin, state.scribeId, 1);
+    assert.equal(early.status, 409, "no audio before a reason is given");
+
+    const opened = await invoke(state.admin, "admin", { action: "recordings.unlock", scribe_id: state.scribeId, reason: "Complaint review of this visit", confirmed: true });
+    assert.equal(opened.error, null, JSON.stringify(opened.error));
+    assert.equal(opened.data.parts.length, 1);
+    assert.equal(opened.data.title, "Test visit");
+    const part = await audioPart(state.admin, state.scribeId, 1);
+    assert.equal(part.status, 200);
+    assert.equal(part.type, "application/octet-stream");
+    assert.equal(part.bytes, 20_000);
+
+    const userPart = await audioPart(state.alice, state.scribeId, 1);
+    assert.equal(userPart.status, 403, "only admins get audio through the function");
+    const anonymous = await fetch(`${localStack().url}/functions/v1/admin`, {
+      method: "POST",
+      headers: { apikey: localStack().publishableKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "recordings.part", scribe_id: state.scribeId, seq: 1 }),
+    });
+    assert.equal(anonymous.status, 401, "nobody gets audio without signing in");
+    const direct = await state.admin.storage.from("recordings").download(`${ALICE.id}/${state.scribeId}/0001.webm`);
+    assert.ok(direct.error, "the audio files have no direct way in, even for admins");
+
+    const download = await audioPart(state.admin, state.scribeId, 1, true);
+    assert.equal(download.status, 200);
+    const { data: entries } = await state.admin.rpc("admin_list_audit", { p_action_group: "recording" });
+    const openedEntry = entries.find((e) => e.action === "recording.opened");
+    assert.equal(openedEntry.reason, "Complaint review of this visit");
+    assert.equal(openedEntry.target_email, ALICE.email);
+    assert.equal(openedEntry.scribe_id, state.scribeId);
+    assert.equal(entries.filter((e) => e.action === "recording.downloaded").length, 1, "listening is logged once; each download is logged");
+  });
+
+  it("shows audio removed by the retention setting, and deleted recordings, as deleted", async () => {
+    // As the hourly clean-up does when the retention period is over.
+    await serverClient().rpc("svc_mark_audio_deleted", { p_scribe_id: state.scribeId });
+    const { data: deletedAudio } = await state.admin.rpc("admin_list_recordings", { p_audio: "deleted" });
+    const row = deletedAudio.find((r) => r.scribe_id === state.scribeId);
+    assert.equal(row.audio_state, "deleted");
+    assert.equal(row.deleted_reason, "retention");
+    assert.ok(row.deleted_at);
+    const locked = await invoke(state.admin, "admin", { action: "recordings.unlock", scribe_id: state.scribeId, reason: "A second look at the audio", confirmed: true });
+    assert.equal(locked.error.code, "audio_deleted");
+    const { data: kept } = await state.admin.rpc("admin_list_recordings", { p_audio: "kept" });
+    assert.ok(!kept.some((r) => r.scribe_id === state.scribeId), "the kept filter leaves it out");
+
+    // A recording the clinician deletes stays on the list, marked as deleted.
+    const extra = await recordAndFinish(state.alice, { seconds: 8 });
+    await waitTranscribed(state.alice, extra.scribe_id);
+    const removed = await state.alice.rpc("delete_scribe", { p_scribe_id: extra.scribe_id });
+    assert.equal(removed.error, null, removed.error?.message);
+    const { data: all } = await state.admin.rpc("admin_list_recordings", { p_person: ALICE.id });
+    const gone = all.find((r) => r.scribe_id === extra.scribe_id);
+    assert.equal(gone.status, "deleted");
+    assert.equal(gone.deleted_reason, "person");
+    assert.equal(gone.owner_name, ALICE.name);
+  });
+
+  it("asks ElevenLabs for zero retention in the web address", async () => {
+    await state.admin.rpc("admin_update_settings", { p_changes: { elevenlabs_zero_retention: true } });
+    await mock("/__reset", {});
+    const scribe = await recordAndFinish(state.alice, { seconds: 6 });
+    await waitTranscribed(state.alice, scribe.scribe_id);
+    const calls = (await mock("/__log")).filter((e) => e.path === "/v1/speech-to-text");
+    assert.ok(calls.length > 0);
+    assert.ok(calls.every((e) => e.query === "?enable_logging=false"), JSON.stringify(calls.map((e) => e.query)));
+    await state.admin.rpc("admin_update_settings", { p_changes: { elevenlabs_zero_retention: false } });
+  });
+
+  it("keeps the model lists current and tests the chosen models", async () => {
+    const find = (lists, provider, purpose) => lists.find((l) => l.provider === provider && l.purpose === purpose);
+    const initial = await invoke(state.admin, "admin", { action: "models.catalog" });
+    assert.equal(initial.error, null, JSON.stringify(initial.error));
+    assert.equal(find(initial.data.lists, "gemini", "text").source, "built_in");
+
+    const fresh = await invoke(state.admin, "admin", { action: "models.refresh" });
+    assert.equal(fresh.error, null, JSON.stringify(fresh.error));
+    assert.deepEqual(fresh.data.problems, []);
+    const transcription = find(fresh.data.lists, "gemini", "transcription");
+    assert.equal(transcription.source, "service");
+    assert.equal(transcription.models[0].id, "gemini-3.5-transcribe");
+    assert.equal(transcription.models[0].recommended, true);
+    assert.ok(!transcription.models.some((m) => m.id.includes("live")), "live-streaming models cannot take a recording");
+    const text = find(fresh.data.lists, "gemini", "text");
+    assert.equal(text.models[0].id, "gemini-3.8-flash");
+    assert.ok(text.models.some((m) => m.id === "gemini-3.7-flash"), "other models the service offers are listed");
+    assert.ok(!text.models.some((m) => /tts|transcribe|embedding/.test(m.id)));
+    const deepseekList = find(fresh.data.lists, "deepseek", "text");
+    assert.equal(deepseekList.models[0].id, "deepseek-flash");
+    assert.equal(deepseekList.models[0].available, true);
+    assert.equal(find(fresh.data.lists, "elevenlabs", "transcription").models[0].id, "scribe_v2_medical");
+
+    const saved = await invoke(state.admin, "admin", { action: "models.catalog" });
+    assert.equal(find(saved.data.lists, "gemini", "text").source, "service", "the lists are kept");
+    const { data: logged } = await state.admin.rpc("admin_list_audit", { p_action_group: "settings" });
+    assert.ok(logged.some((e) => e.action === "settings.models_refreshed"));
+
+    const tested = await invoke(state.admin, "admin", {
+      action: "models.test",
+      transcription: { provider: "gemini", model: "gemini-3.5-transcribe" },
+      notes: { provider: "gemini", model: "gemini-3.8-flash" },
+      templates: { provider: "deepseek", model: "deepseek-flash" },
+    });
+    assert.equal(tested.error, null, JSON.stringify(tested.error));
+    assert.deepEqual(tested.data.results.map((r) => [r.job, r.ok]), [["transcription", true], ["notes", true], ["templates", true]]);
+    const log = await mock("/__log");
+    assert.ok(log.some((e) => e.path === "/v1beta/interactions" && e.size > 40_000), "a second of audio was sent to test transcription");
+
+    const broken = await invoke(state.admin, "admin", {
+      action: "models.test",
+      transcription: { provider: "elevenlabs", model: "whisper-1" },
+      notes: { provider: "gemini", model: "gemini-missing" },
+    });
+    assert.deepEqual(broken.data.results.map((r) => r.ok), [false, false]);
+    assert.match(broken.data.results[0].message, /not available to your account/);
+
+    const asUser = await invoke(state.alice, "admin", { action: "models.refresh" });
+    assert.equal(asUser.status, 403);
+  });
+
   it("manages credit, roles, suspension and removal with safeguards", async () => {
     const add = await state.admin.rpc("admin_adjust_credit", { p_user: BOB.id, p_provider: "elevenlabs", p_mode: "add", p_minutes: 15, p_note: "Extra clinic" });
     assert.equal(add.data.balance_seconds, 45 * 60);
@@ -332,6 +495,8 @@ describe("Clinical Scribe server", () => {
     const allowed = await state.bob.rpc("start_scribe", { p_template_id: null, p_title: "", p_mime_type: "audio/webm" });
     assert.equal(allowed.error, null);
     await state.bob.rpc("discard_scribe", { p_scribe_id: allowed.data.scribe_id });
+    // Stopped before any audio was saved, so it leaves nothing on the Recording page.
+    assert.equal(sql(`select count(*) from app_private.deleted_recordings where scribe_id = '${allowed.data.scribe_id}'`), "0");
 
     const demoteSelf = await state.admin.rpc("admin_set_role", { p_user: state.adminId, p_role: "user" });
     assert.equal(friendlyCode(demoteSelf.error), "last_admin");
@@ -354,12 +519,22 @@ describe("Clinical Scribe server", () => {
     assert.equal(password.error, null);
     await signIn(BOB.email, "New-bob-pass-2026");
 
+    // A finished recording of Bob's, to see what his removal leaves on the Recording page.
+    const bobRecording = "22222222-2222-4222-8222-222222222222";
+    sql(`insert into public.scribes (id, owner_id, title, status, segment_count, duration_seconds, transcript, finished_at, transcribed_at)
+         values ('${bobRecording}', '${BOB.id}', 'Bob visit', 'transcribed', 1, 120, 'Speaker 1: Hello', now(), now())`);
+
     const wrongConfirm = await invoke(state.admin, "admin", { action: "users.remove", user_id: BOB.id, confirm_email: "someone@example.test" });
     assert.equal(wrongConfirm.error.code, "confirm_mismatch");
     const removed = await invoke(state.admin, "admin", { action: "users.remove", user_id: BOB.id, confirm_email: BOB.email });
     assert.equal(removed.error, null, JSON.stringify(removed.error));
     assert.equal(sql(`select count(*) from public.profiles where id = '${BOB.id}'`), "0");
     assert.equal(sql(`select target_email from public.audit_log where action = 'user.removed' order by id desc limit 1`), BOB.email);
+    const { data: deletedList } = await state.admin.rpc("admin_list_recordings", { p_audio: "deleted" });
+    const bobGone = deletedList.find((row) => row.scribe_id === bobRecording);
+    assert.equal(bobGone?.deleted_reason, "account_removed", "the removed person's recording shows as deleted with the account");
+    assert.equal(bobGone.owner_email, BOB.email);
+    assert.equal(bobGone.status, "deleted");
   });
 
   it("applies Google sign-in settings through the Management API and keeps the email settings", async () => {

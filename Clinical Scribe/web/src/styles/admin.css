@@ -122,6 +122,56 @@
   gap: 8px;
 }
 
+.model-note {
+  overflow-wrap: anywhere;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.test-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.test-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--blue-50);
+  border: 1px solid rgba(36, 99, 208, 0.12);
+}
+
+.test-result svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.test-result.ok svg {
+  color: var(--ok);
+}
+
+.test-result.bad svg {
+  color: var(--bad);
+}
+
+.test-result strong {
+  overflow-wrap: anywhere;
+}
+
+.test-result p {
+  margin: 2px 0 0;
+}
+
 /* Usage */
 .usage-card {
   padding: 18px 22px;
@@ -324,4 +374,85 @@
   .kv dd {
     margin-bottom: 8px;
   }
+}
+
+/* Recording */
+.page-intro {
+  margin: 0 0 14px;
+  color: var(--ink-2);
+}
+
+.select-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+}
+
+.select-box svg {
+  position: absolute;
+  left: 12px;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+.select-box .select {
+  padding-left: 40px;
+}
+
+.recordings-table tr.is-muted td {
+  color: var(--ink-3);
+}
+
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.load-more:empty {
+  display: none;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--ink-3);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.player-part {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--blue-50);
+  border: 1px solid rgba(36, 99, 208, 0.12);
+}
+
+.player-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.player-slot audio {
+  display: block;
+  width: 100%;
 }

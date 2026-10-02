@@ -7,6 +7,7 @@ import * as email from "./handlers/email.ts";
 import * as google from "./handlers/google.ts";
 import * as keys from "./handlers/keys.ts";
 import * as models from "./handlers/models.ts";
+import * as recordings from "./handlers/recordings.ts";
 import * as users from "./handlers/users.ts";
 
 const ROUTES: Record<string, AdminAction> = {
@@ -17,7 +18,11 @@ const ROUTES: Record<string, AdminAction> = {
   "keys.save": keys.save,
   "keys.remove": keys.remove,
   "keys.check": keys.check,
-  "models.list": models.list,
+  "models.catalog": models.catalog,
+  "models.refresh": models.refresh,
+  "models.test": models.test,
+  "recordings.unlock": recordings.unlock,
+  "recordings.part": recordings.part,
   "google.get": google.get,
   "google.save": google.save,
   "google.token_save": google.saveToken,

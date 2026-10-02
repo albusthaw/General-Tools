@@ -2,6 +2,7 @@
 // connection alive.
 import { serviceBase } from "../env.ts";
 import { ProviderError } from "../errors.ts";
+import { type ModelChoice, mergeChoices } from "../models.ts";
 import { send, sendJson } from "./request.ts";
 
 export interface ChatResult {
@@ -119,12 +120,13 @@ export async function readStream(response: Response, timeoutMs: number): Promise
   return { content, inputTokens, outputTokens };
 }
 
-export interface ModelChoice {
-  id: string;
-  label: string;
-}
+// Known good models, shown first. DeepSeek's own list adds any others.
+export const DEEPSEEK_MODELS: ModelChoice[] = [
+  { id: "deepseek-flash", label: "DeepSeek Flash", note: "Fast and capable", recommended: true },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", note: "Stronger, slower" },
+];
 
-export async function listModels(apiKey: string): Promise<ModelChoice[]> {
+async function offeredModels(apiKey: string): Promise<ModelChoice[]> {
   const result = await sendJson<{ data?: Array<{ id?: string }> }>("deepseek", `${serviceBase("deepseek")}/models`, {
     method: "GET",
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -132,10 +134,19 @@ export async function listModels(apiKey: string): Promise<ModelChoice[]> {
   return (result.data ?? [])
     .map((model) => String(model.id ?? ""))
     .filter((id) => /^[A-Za-z0-9][A-Za-z0-9._:-]{1,79}$/.test(id))
-    .sort()
     .map((id) => ({ id, label: id }));
 }
 
+export async function listModels(apiKey: string): Promise<ModelChoice[]> {
+  return mergeChoices(DEEPSEEK_MODELS, await offeredModels(apiKey));
+}
+
 export async function checkKey(apiKey: string): Promise<void> {
-  await listModels(apiKey);
+  await offeredModels(apiKey);
+}
+
+// A tiny request that shows whether the model answers with this key.
+export async function testText(apiKey: string, model: string): Promise<void> {
+  const result = await chat({ apiKey, model, system: "Reply with one word.", user: "Say: ready", maxTokens: 32, timeoutMs: 45_000 });
+  if (!result.content.trim()) throw new ProviderError("invalid_output", "deepseek", "The model sent an empty answer.");
 }

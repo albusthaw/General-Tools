@@ -248,8 +248,10 @@ async function handle(req, res) {
     return send(res, 200, {
       models: [
         { name: "models/gemini-3.8-flash", displayName: "Gemini 3.8 Flash" },
+        { name: "models/gemini-3.7-flash", displayName: "Gemini 3.7 Flash" },
         { name: "models/gemini-3.1-pro-preview", displayName: "Gemini 3.1 Pro Preview" },
         { name: "models/gemini-3.5-transcribe", displayName: "Gemini 3.5 Transcribe" },
+        { name: "models/gemini-3.5-transcribe-live", displayName: "Gemini 3.5 Transcribe Live" },
         { name: "models/gemini-3.8-flash-tts", displayName: "Gemini 3.8 Flash TTS" },
         { name: "models/gemini-embedding-001", displayName: "Embedding" },
       ],
@@ -260,7 +262,12 @@ async function handle(req, res) {
   if (path === "/v1beta/interactions" && req.method === "POST") {
     const body = JSON.parse(raw.toString() || "{}");
     const audio = Array.isArray(body.input) ? body.input.find((part) => part.type === "audio") : null;
-    if (audio) {
+    if (audio && typeof audio.data === "string") {
+      // Audio sent inline (the model test): it must be base64 WAV.
+      if (audio.mime_type !== "audio/wav" || !Buffer.from(audio.data, "base64").subarray(0, 4).equals(Buffer.from("RIFF"))) {
+        return send(res, 400, { error: { message: "Inline audio could not be read." } });
+      }
+    } else if (audio) {
       const fileId = String(audio.uri ?? "").split("/").pop();
       if (!files.has(fileId)) return send(res, 400, { error: { message: "The audio file was not found." } });
     }

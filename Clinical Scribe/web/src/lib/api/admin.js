@@ -1,5 +1,6 @@
-// Admin settings, people, keys, sign-in and the audit log.
-import { fromDatabase, fromFunction } from "../errors.js";
+// Admin settings, people, keys, sign-in, recordings and the audit log.
+import { config } from "../../config.js";
+import { fromDatabase, fromFunction, UserError } from "../errors.js";
 import { supabase } from "../supabase.js";
 
 async function call(name, args = {}) {
@@ -36,7 +37,9 @@ export const creditHistory = (userId, limit = 20) => call("admin_credit_history"
 export const saveKey = (name, value) => action("keys.save", { name, value });
 export const removeKey = (name) => action("keys.remove", { name });
 export const checkKey = (name, model) => action("keys.check", { name, model });
-export const listModels = (provider, purpose) => action("models.list", { provider, purpose });
+export const modelCatalog = () => action("models.catalog");
+export const refreshModels = () => action("models.refresh");
+export const testModels = (choices) => action("models.test", choices);
 
 // Google sign-in
 export const getGoogle = () => action("google.get");
@@ -48,8 +51,41 @@ export const removeToken = () => action("google.token_remove");
 export const getEmail = () => action("email.get");
 export const saveEmail = (settings) => action("email.save", settings);
 
+// Recording audio
+export const listRecordings = ({ person = null, audio = "", before = null, limit = 50 } = {}) =>
+  call("admin_list_recordings", { p_person: person, p_audio: audio, p_before: before, p_limit: limit });
+export const unlockRecording = (scribeId, reason, confirmed) => action("recordings.unlock", { scribe_id: scribeId, reason, confirmed });
+
+// One part of a recording's audio, as a Blob. The functions client would read the
+// bytes as text, so this request is made directly, with the person's own sign-in.
+export async function recordingPart(scribeId, seq, { download = false } = {}) {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new UserError("Your session has ended. Please sign in again.", "not_signed_in");
+  let response;
+  try {
+    response = await fetch(`${config.supabaseUrl}/functions/v1/admin`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, apikey: config.supabaseKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "recordings.part", scribe_id: scribeId, seq, download }),
+    });
+  } catch {
+    throw new UserError("The server cannot be reached. Check your internet connection and try again.", "offline");
+  }
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    throw new UserError(payload?.error?.message ?? "The audio could not be loaded. Please try again.", payload?.error?.code ?? "error");
+  }
+  return await response.blob();
+}
+
 // Audit log
-export const listAudit = ({ group = "", person = null, from = null, to = null, beforeId = null, limit = 50 } = {}) =>
+export const listAudit =({ group = "", person = null, from = null, to = null, beforeId = null, limit = 50 } = {}) =>
   call("admin_list_audit", {
     p_action_group: group,
     p_person: person,

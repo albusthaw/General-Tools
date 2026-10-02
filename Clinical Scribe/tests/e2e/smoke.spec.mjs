@@ -5,6 +5,7 @@ import { ADMIN, expectNoSideScroll, go, signIn, signOut, USER, watchProblems } f
 const ADMIN_PAGES = [
   ["/admin/users", "User settings"],
   ["/admin/ai", "AI settings"],
+  ["/admin/recordings", "Recording"],
   ["/admin/review", "Review records"],
   ["/admin/audit", "Audit log"],
   ["/admin/google", "Google sign-in"],
@@ -36,9 +37,12 @@ test("an admin can open every screen", async ({ page }) => {
 test("a user sees only Clinical Scribe and cannot open admin pages", async ({ page }) => {
   await signIn(page, USER);
   await expect(page.locator(".nav-heading")).toHaveCount(0);
-  await page.goto("/#/admin/users");
-  await expect(page).toHaveURL(/#\/scribe$/);
-  await expect(page.locator(".content-inner h1").first()).toHaveText("Scribe");
+  await expect(page.getByRole("link", { name: "Recording", exact: true, includeHidden: true })).toHaveCount(0);
+  for (const path of ["/admin/users", "/admin/recordings"]) {
+    await page.goto(`/#${path}`);
+    await expect(page).toHaveURL(/#\/scribe$/);
+    await expect(page.locator(".content-inner h1").first()).toHaveText("Scribe");
+  }
   await signOut(page);
 });
 

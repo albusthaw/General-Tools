@@ -9,7 +9,7 @@ import { parseCliVersion } from "../../build/deploy/cli.mjs";
 import { pickKeys } from "../../build/deploy/management-api.mjs";
 import { DeployError, scrub } from "../../build/deploy/output.mjs";
 import { keyHeaders } from "../../build/deploy/project-api.mjs";
-import { signInPatch } from "../../build/deploy/server.mjs";
+import { compareCounts, isSerious, signInPatch } from "../../build/deploy/server.mjs";
 import { goodPassword, parseAppUrl, parseProjectRef, readSettings } from "../../build/deploy/settings.mjs";
 import { findLeaks } from "../../build/deploy/web.mjs";
 
@@ -136,4 +136,18 @@ test("the Supabase tool version is read from its output", () => {
   assert.deepEqual(parseCliVersion("2.119.0\n"), [2, 119, 0]);
   assert.deepEqual(parseCliVersion("A new version is available: v2.200.1"), [2, 200, 1]);
   assert.equal(parseCliVersion("no version"), null);
+});
+
+test("the record check spots lost records and tells a slip from a loss", () => {
+  const before = { people: 12, recordings: 340, notes: 512, templates: 9, audit_entries: 2000, credit_entries: 400 };
+  assert.deepEqual(compareCounts(before, { ...before, recordings: 345, notes: 520 }), [], "more records is fine");
+  assert.deepEqual(compareCounts(null, before), [], "nothing to compare on a first install");
+
+  const slip = compareCounts(before, { ...before, recordings: 339 });
+  assert.deepEqual(slip, [{ key: "recordings", label: "recordings", was: 340, now: 339, lost: 1 }]);
+  assert.equal(slip.some(isSerious), false, "one recording deleted during the deploy is not a loss");
+
+  assert.equal(compareCounts(before, { ...before, notes: 0 }).some(isSerious), true, "an emptied table is a loss");
+  assert.equal(compareCounts(before, { ...before, templates: 4 }).some(isSerious), true, "five gone is a loss");
+  assert.equal(compareCounts(before, { ...before, audit_entries: 1999 }).some(isSerious), true, "the audit log never shrinks");
 });

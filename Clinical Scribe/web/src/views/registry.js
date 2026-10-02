@@ -3,6 +3,7 @@ import { renderAiSettings } from "./admin/ai.js";
 import { renderAudit } from "./admin/audit.js";
 import { renderEmail } from "./admin/email.js";
 import { renderGoogle } from "./admin/google.js";
+import { renderRecordings } from "./admin/recordings.js";
 import { renderReview } from "./admin/review.js";
 import { renderUsers } from "./admin/users.js";
 import { renderHistory } from "./scribe/history.js";
@@ -17,6 +18,7 @@ export const VIEWS = {
   "history-detail": renderHistoryDetail,
   "admin-users": renderUsers,
   "admin-ai": renderAiSettings,
+  "admin-recordings": renderRecordings,
   "admin-review": renderReview,
   "admin-audit": renderAudit,
   "admin-google": renderGoogle,

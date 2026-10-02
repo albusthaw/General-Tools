@@ -1,5 +1,7 @@
 // Fresh data for the browser tests: an admin with service keys, and one user.
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { invoke, mock, serverClient, signIn, sql, toolRoot } from "../helpers/local.mjs";
 
 export const ADMIN = { email: "admin@clinic.test", password: "Admin-pass-2026", name: "Dr Amelia Hart" };
@@ -42,4 +44,7 @@ export async function seed() {
     unlimited: false,
   });
   if (created.error) throw new Error(`Could not create the user: ${created.error.message}`);
+  // A deploy records the app version on the server; the app warns when they differ.
+  const version = readFileSync(join(toolRoot, "VERSION"), "utf8").trim();
+  sql(`select public.svc_set_server_version('${version}')`);
 }

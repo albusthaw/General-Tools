@@ -45,11 +45,12 @@ There are two roles:
 
 ### 2.3 Admin settings (side menu category)
 1. **User settings**: add people (name, email, starting password, role, starting credit), change password, change role, suspend or restore, remove, approve waiting accounts, assign transcription credit.
-2. **AI settings**: save, replace, check and remove the keys for ElevenLabs, Gemini and DeepSeek; choose the transcription service (ElevenLabs or Gemini) and model; choose the note service (Gemini by default, or DeepSeek) and model; choose the single template service (Gemini or DeepSeek) and model; recording settings (audio retention, longest recording); manage shared templates.
-3. **Review records** (other people's history): a warning screen, a required reason and a confirmation tick before anything is shown. Every list view, record opened and copy action is written to the audit log with the admin's name, the person whose record it is, the record, the reason and the time.
-4. **Audit log**: a read-only, filterable list of every admin action and every record review, with CSV export.
-5. **Google sign-in**: step-by-step guidance, the redirect address to copy into Google Cloud, Client ID and Client secret fields, an on/off switch. Saving applies the settings to the Supabase project's sign-in service.
-6. **Email (SMTP)**: a working settings form (server, port, security, user name, password, sender) that saves securely. It is deliberately not used by anything yet; the page says so.
+2. **AI settings**: save, replace, check and remove the keys for ElevenLabs, Gemini and DeepSeek; update the model lists from each service and test the chosen models; choose the transcription service (ElevenLabs or Gemini) and model; choose the note service (Gemini by default, or DeepSeek) and model; choose the single template service (Gemini or DeepSeek) and model; recording settings (audio retention, longest recording); manage shared templates.
+3. **Recording** (admins only): every recording with its clinician, length, status and the state of its audio (kept until a date, deleted by the retention setting, deleted with the recording or with the account), filtered by person and by audio state. Deleted recordings stay listed as deleted. Listening or downloading needs a warning, a reason and a confirmation tick; the opening and every download are written to the audit log.
+4. **Review records** (other people's history): a warning screen, a required reason and a confirmation tick before anything is shown. Every list view, record opened and copy action is written to the audit log with the admin's name, the person whose record it is, the record, the reason and the time.
+5. **Audit log**: a read-only, filterable list of every admin action and every record review, with CSV export.
+6. **Google sign-in**: step-by-step guidance, the redirect address to copy into Google Cloud, Client ID and Client secret fields, an on/off switch. Saving applies the settings to the Supabase project's sign-in service.
+7. **Email (SMTP)**: a working settings form (server, port, security, user name, password, sender) that saves securely. It is deliberately not used by anything yet; the page says so.
 
 ### 2.4 Credit
 - Credit is counted in minutes of audio, kept separately for ElevenLabs and for Gemini, because the two services are paid separately.
@@ -94,7 +95,7 @@ Supabase does not serve web pages from its default address: Edge Functions rewri
 | Storage | Private bucket for audio parts, one folder per person. Uploads are allowed only into the person's own folder and only while their recording is open. |
 | Edge Function `worker` | Runs queued jobs: transcribe a part, join parts, write a note, clean up old audio. Woken by the database, never by browsers. |
 | Edge Function `templates-ai` | Drafts and revises templates with the chosen template AI. |
-| Edge Function `admin` | Admin actions that need server keys: create, suspend and remove accounts, change passwords, save and check AI keys, list models, apply Google sign-in settings, save the email stub. |
+| Edge Function `admin` | Admin actions that need server keys: create, suspend and remove accounts, change passwords, save and check AI keys, update and test model lists, open recording audio after a logged reason and stream it to the admin, apply Google sign-in settings, save the email stub. |
 
 ## 4. Recording and processing pipeline
 
@@ -133,7 +134,7 @@ The worker:
 
 ## 5. AI services and models
 
-The admin picks models from live lists fetched from each service, or types a model name. Defaults (October 2026):
+The admin picks models from saved lists, or types a model name. **Update model lists** fetches each service's current list (Gemini `GET /v1beta/models`, DeepSeek `GET /models`; ElevenLabs has no list of speech-to-text models, so its list is built in) and saves it in `app_private.model_catalog`. Known good models come first and are marked *recommended*; known models the key is not offered are marked too. Gemini transcription lists only `*-transcribe` models and never the `-live` ones, which stream live audio and cannot take a recorded file; writing lists leave out speech, image, live, embedding and transcription models. **Test chosen models** sends each chosen model a tiny request: one second of silent WAV audio for Gemini transcription (inline `data`), a key check for ElevenLabs, and a one-word prompt for notes and templates. Defaults (October 2026):
 
 | Use | Service | Default model | Notes |
 | --- | --- | --- | --- |
@@ -144,11 +145,11 @@ The admin picks models from live lists fetched from each service, or types a mod
 | Templates (one service) | Gemini or DeepSeek | `gemini-3.8-flash` / `deepseek-flash` | JSON output: name, description, body. |
 
 API facts the code relies on:
-- ElevenLabs: `POST https://api.elevenlabs.io/v1/speech-to-text`, header `xi-api-key`, multipart fields `model_id`, `file`, `diarize`, `timestamps_granularity`, optional `language_code`, `enable_logging`. Response has `text`, `words[]` (`text`, `type`, `speaker_id`, `start`, `end`) and `audio_duration_secs`.
-- Gemini: header `x-goog-api-key`. Files: `POST /upload/v1beta/files` with the resumable protocol, then `GET/DELETE /v1beta/files/{id}`. Interactions: `POST /v1beta/interactions` (`model`, `input`, `system_instruction`, `generation_config`, `response_format`, `background`, `store`), `GET` and `DELETE /v1beta/interactions/{id}`. Status values include `in_progress`, `completed`, `failed`, `cancelled`, `incomplete`, `queued`. Text is in `output_text` or in `steps[].content[]`. Audio counts as 32 tokens per second. The transcription model takes `generation_config.transcription_config` with `mode: {type: "verbatim", diarization_mode: "speaker"}`.
+- ElevenLabs: `POST https://api.elevenlabs.io/v1/speech-to-text`, header `xi-api-key`, multipart fields `model_id`, `file`, `diarize`, `timestamps_granularity`, optional `language_code`. Zero retention is the query parameter `?enable_logging=false`, not a form field. Response has `text`, `words[]` (`text`, `type`, `speaker_id`, `start`, `end`) and `audio_duration_secs`.
+- Gemini: header `x-goog-api-key`. Files: `POST /upload/v1beta/files` with the resumable protocol, then `GET/DELETE /v1beta/files/{id}`. Interactions: `POST /v1beta/interactions` (`model`, `input`, `system_instruction`, `generation_config`, `response_format`, `background`, `store`), `GET` and `DELETE /v1beta/interactions/{id}`. Audio input is `{type: "audio", mime_type, uri}` for an uploaded file or `{type: "audio", mime_type, data}` for small inline audio. Status values: `in_progress`, `queued`, `completed`, `failed`, `cancelled`, `requires_action` (tools only, so treated as failed), and `incomplete` or `budget_exceeded` (used only when they carry text). Text is in `output_text` or in `steps[].content[]`. Audio counts as 32 tokens per second. The transcription model takes `generation_config.transcription_config` with `mode: {type: "verbatim", diarization_mode: "speaker", timestamp_granularities: ["word"]}`.
 - DeepSeek: `POST https://api.deepseek.com/chat/completions`, bearer key, `thinking: {type: "enabled" | "disabled"}`, `stream: true`, `response_format: {type: "json_object"}`; `GET /models` for the list.
 
-Privacy notes shown to admins: use paid plans (free plans may keep or use data); ElevenLabs "zero retention" (`enable_logging=false`) is offered as an option for plans that allow it; Gemini interactions and files are deleted as soon as the result is read.
+Privacy notes shown to admins: use paid plans (free plans may keep or use data); ElevenLabs "zero retention" (`?enable_logging=false`) is offered as an option for plans that allow it; Gemini interactions and files are deleted as soon as the result is read.
 
 ### 5.1 Prompts and prompt-injection defence
 - System instructions fix the rules: use only what is in the transcript, never invent findings, write "Not discussed" for missing sections, follow the template headings exactly, plain text output, British English.
@@ -171,7 +172,7 @@ Privacy notes shown to admins: use paid plans (free plans may keep or use data);
 | `review_sessions` | admin, target user, reason, started, expires, ended | Server only (through RPC) |
 | `ai_usage` | user, kind, provider, model, tokens, time | Admins; used for rate limits |
 
-Private schema `app_private` (not exposed by the API): runtime settings (worker address), secret metadata (last four characters, who changed it, when), helper functions.
+Private schema `app_private` (not exposed by the API): runtime settings (worker address), secret metadata (last four characters, who changed it, when), helper functions, the saved model lists (`model_catalog`), admins' 15-minute audio access grants (`recording_access`), and a short record of each deleted recording (`deleted_recordings`: owner, name, date, length, why it was deleted), so the Recording page can show it as deleted. Triggers fill `deleted_recordings` when a recording or an account is deleted; it holds no transcript, note or audio.
 
 ## 7. Security model
 
@@ -179,7 +180,9 @@ Private schema `app_private` (not exposed by the API): runtime settings (worker 
 | --- | --- |
 | AI key leak | Keys are stored only in Supabase Vault (encrypted at rest). Only `service_role` can call the functions that read them. The browser never receives a key; admins see "saved, ending in 4f2a" only. Keys are never written to logs; provider error text is cleaned of anything that looks like a key before it is stored. |
 | Reading other people's records | Row Level Security limits every table to its owner. Admins have no direct read access to other people's scribes; they must use review RPCs that write the audit entry first, in the same transaction, and require an open review with a reason. |
+| Listening to other people's audio | Audio is in a private bucket with no public or signed addresses. Only the admin function serves it: `svc_recording_unlock` needs an active admin, a reason (10 to 500 characters) and a confirmation, writes the audit entry and grants access for 15 minutes. Each part is then streamed as `application/octet-stream` with `no-store`; downloads are logged too. Audio deleted by the retention setting can never be opened. The Recording page and its list function refuse anyone who is not an admin. |
 | Audit tampering | `audit_log` has no update or delete grants and a trigger that rejects updates and deletes for every role. |
+| Data loss on upgrade | Migrations only add. The unit tests and the deploy refuse top-level statements that drop or empty a table, delete rows or drop a column, and released migrations are fingerprinted so an edit is caught. The deploy counts records before and after `supabase db push` and stops with restore advice if any are missing. |
 | SQL injection | All access goes through PostgREST parameters or SQL functions with typed parameters. No dynamic SQL is built from user input. Every function sets `search_path = ''` and uses fully qualified names. |
 | Script injection (XSS) | The web app builds the page with `textContent` and DOM nodes only, never `innerHTML` with data. A Content Security Policy limits scripts, styles and connections to the app and the Supabase project. |
 | Prompt injection | See section 5.1. Output is text only and cannot trigger any action. |
@@ -205,6 +208,7 @@ Clinical Scribe/
 ├── VERSION                app version (major.minor.patch)
 ├── build/
 │   ├── deploy/            deploy and upgrade script, used by the workflow and by hand
+│   ├── record-migrations.mjs  records released migrations' fingerprints
 │   └── make-icons.mjs     draws the app icons
 ├── Release/               README.txt only: this tool is published, not built into a file
 ├── supabase/
@@ -245,9 +249,11 @@ Each module has one job. Screens talk to the server only through `lib/api/*.js`.
    - checks the token and the project (waits while a new project starts, stops at once for a paused one) and reads the API keys, hiding them in the log;
    - builds the web app with the project address and publishable key, and refuses to continue if any secret is found in the built files, so a failed build stops before the server is changed;
    - applies sign-in settings through the Management API before anything else on the server, so nobody can sign up on a new project during the deploy: sign-up off, email sign-in on, the password rule, the site address and the redirect list (addresses already listed and stricter rules are kept);
+   - checks that no migration would remove stored records, and counts the records (people, recordings, notes, templates, audit log, minutes history);
    - links the project and applies database migrations (`supabase db push`);
    - deploys the three Edge Functions with JWT verification off, bundled on Supabase's side (no Docker needed);
    - saves the function settings (project reference and the one web address allowed to call the functions);
+   - counts the records again and stops with restore advice if any are missing (a deleted record or two during the deploy is only a warning);
    - records the functions address for the worker and the version now running;
    - creates the first admin when the optional secrets are present and the project has no accounts yet;
    - writes a short report on the run page.
@@ -256,17 +262,18 @@ Each module has one job. Screens talk to the server only through `lib/api/*.js`.
 
 ### 9.2 Upgrades
 - Database changes are new, numbered migration files; `supabase db push` applies only the ones not yet applied, so data stays.
+- Data guard: migrations that would drop or empty a table, delete rows or drop a column are refused by the tests and by the deploy; released migrations are fingerprinted in `tests/unit/released-migrations.json` (`node build/record-migrations.mjs` at each release); the deploy compares record counts before and after the update.
 - To upgrade: bring the new code into the repository (pull or sync), then run the same workflow again. Every step is safe to repeat.
 - `VERSION` is shown in the app. Each deploy records it on the server (`svc_set_server_version`), each change of version is written to the audit log, and admins see a notice when the app and the server versions differ.
 - The same steps run by hand from a terminal with `node build/deploy/deploy.mjs` (parts: `check`, `server`, `web`).
 
 ## 10. Testing plan
 `tests/run-local.sh` runs every group below; the workflow **Test Clinical Scribe** runs it on GitHub whenever the tool changes.
-- **Unit tests** (Node test runner, `tests/unit`): formatting, CSV export escaping, recorder part timing, upload queue retry rules, audit wording, and the deploy helpers (settings checks, key choice, sign-in settings merge, leak check).
-- **Server function checks** (Deno, `tests/functions`): type check and lint of every function, prompt assembly and marker neutralising, template answer parsing, note clean-up, transcript building from word labels, error sorting and retry rules, key hiding.
-- **Server tests** (`tests/api`, local Supabase stack with stand-in AI services): first admin, waiting accounts, keys never returned, recording and background processing with both transcription services, notes with both note services, template helper, finished notes final, retries and credit refund, privacy between people (tables and storage), audit log immutability, logged record review, credit, roles, suspension, removal, last-admin protection, Google sign-in settings, email stub, worker secret.
-- **Deploy tests** (`tests/deploy`): the real deploy script against the local stack with a stand-in command-line tool and Management API: first deploy, a repeat deploy that keeps settings and records the upgrade, older keys, a failed step, a paused project, a wrong token, missing values, check mode, and that no secret is ever printed.
-- **End to end** (`tests/e2e`, Playwright): sign-in, recording with Chromium's fake microphone, pause and resume, parts, background processing with the page closed, crash recovery, note writing, history, another note, template builder, admin pages, record review logging, audit log and CSV, Google sign-in, email settings, at phone and desktop widths, with no console errors and no sideways scrolling.
+- **Unit tests** (Node test runner, `tests/unit`): formatting, CSV export escaping, recorder part timing, upload queue retry rules, audit wording, the deploy helpers (settings checks, key choice, sign-in settings merge, leak check, record count comparison), and the migration guard (no data-losing statements, released migrations unchanged, new ones sort last).
+- **Server function checks** (Deno, `tests/functions`): type check and lint of every function, prompt assembly and marker neutralising, template answer parsing, note clean-up, transcript building from word labels, error sorting and retry rules, key hiding, model list rules and Gemini answer states.
+- **Server tests** (`tests/api`, local Supabase stack with stand-in AI services): first admin, waiting accounts, keys never returned, recording and background processing with both transcription services, notes with both note services, template helper, finished notes final, retries and credit refund, privacy between people (tables and storage), audit log immutability, logged record review, the Recording list and audio access (refused before a reason, for users and for visitors; logged opening and download; retention and deleted states), ElevenLabs zero retention, model list update and test, credit, roles, suspension, removal, last-admin protection, Google sign-in settings, email stub, worker secret.
+- **Deploy tests** (`tests/deploy`): the real deploy script against the local stack with a stand-in command-line tool and Management API: first deploy, a repeat deploy that keeps settings and records the upgrade, a deploy that loses records and stops, older keys, a failed step, a paused project, a wrong token, missing values, check mode, and that no secret is ever printed. A real upgrade from 1.0.0 with records checks that every record is kept and works with the new features.
+- **End to end** (`tests/e2e`, Playwright): sign-in, recording with Chromium's fake microphone, pause and resume, parts, background processing with the page closed, crash recovery, note writing, history, another note, template builder, admin pages, model list update and test, record review logging, listening to and downloading recording audio with logging, audit log and CSV, Google sign-in, email settings, at phone and desktop widths, with no console errors and no sideways scrolling.
 - **Security checks**: the deploy scans the built web app for keys and tokens before anything is published; the server tests try to read other people's data and to change the audit log with user tokens.
 
 ## 11. Known limits
