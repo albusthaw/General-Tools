@@ -7,6 +7,8 @@
 #   tests/run-local.sh api      server tests
 #   tests/run-local.sh deploy   the deploy script, against the local stack
 #   tests/run-local.sh e2e      browser tests
+#   tests/run-local.sh android  the Android app's own tests and checks (not part of
+#                               "everything"; needs JDK 21 and the Android SDK)
 #
 # Needs Docker, the Supabase CLI, Node.js 20.19+ and psql; Deno 2 for the server
 # function checks. The local database is reset first, so never point this at a
@@ -17,9 +19,17 @@ TOOL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$TOOL_DIR"
 WHAT="${1:-all}"
 case "$WHAT" in
-  all | unit | api | deploy | e2e) ;;
-  *) echo "Use: tests/run-local.sh [all | unit | api | deploy | e2e]"; exit 2 ;;
+  all | unit | api | deploy | e2e | android) ;;
+  *) echo "Use: tests/run-local.sh [all | unit | api | deploy | e2e | android]"; exit 2 ;;
 esac
+
+if [ "$WHAT" = "android" ]; then
+  echo "Building the app pages for Android..."
+  (cd web && npm run build:app >/dev/null && npx cap sync android >/dev/null)
+  echo "Running the Android tests and checks..."
+  (cd android && ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest :app:lintRelease)
+  exit 0
+fi
 LOG_DIR="${TMPDIR:-/tmp}/clinical-scribe-tests"
 mkdir -p "$LOG_DIR"
 STARTED=()
@@ -40,7 +50,7 @@ if wants unit; then
   (cd tests && node --test unit/*.test.mjs)
   if command -v deno >/dev/null 2>&1; then
     echo "Checking the server functions..."
-    deno check supabase/functions/worker/index.ts supabase/functions/templates-ai/index.ts supabase/functions/admin/index.ts
+    deno check supabase/functions/worker/index.ts supabase/functions/templates-ai/index.ts supabase/functions/admin/index.ts supabase/functions/connect/index.ts
     deno lint supabase/functions tests/functions
     deno test tests/functions/
   else
@@ -57,14 +67,24 @@ reset_stack() {
   curl -fs -X POST http://127.0.0.1:54399/__reset >/dev/null
 }
 
-# Local function settings: send AI calls to the stand-in services.
-cat > supabase/functions/.env <<'EOF'
+# Local function settings: send AI calls to the stand-in services, and tell the
+# connect function the addresses and public key the apps use on this computer.
+PUBLISHABLE_KEY="$(supabase status -o json 2>/dev/null | node -e '
+  let text = "";
+  process.stdin.on("data", (chunk) => (text += chunk)).on("end", () => {
+    const stack = JSON.parse(text.slice(text.indexOf("{")));
+    process.stdout.write(stack.PUBLISHABLE_KEY ?? stack.ANON_KEY ?? "");
+  });')"
+cat > supabase/functions/.env <<ENV
 CS_TEST_GEMINI_BASE_URL=http://host.docker.internal:54399
 CS_TEST_ELEVENLABS_BASE_URL=http://host.docker.internal:54399
 CS_TEST_DEEPSEEK_BASE_URL=http://host.docker.internal:54399
 CS_TEST_SUPABASE_API_BASE_URL=http://host.docker.internal:54399
 CS_PROJECT_REF=abcdefghijklmnopqrst
-EOF
+CS_PUBLIC_URL=http://127.0.0.1:54321
+CS_SITE_URL=http://127.0.0.1:4173/
+CS_PUBLISHABLE_KEY=${PUBLISHABLE_KEY}
+ENV
 
 echo "Starting the stand-in AI services..."
 pkill -f "^node tests/mock-ai/server.mjs" 2>/dev/null || true
@@ -122,7 +142,7 @@ if wants e2e; then
       });' > "$TOOL_DIR/web/.env.local"
   fi
   # Always test the current code, never an older preview that is still running.
-  pkill -f "vite preview" 2>/dev/null || true
+  pkill -f "vite preview$" 2>/dev/null || true
   echo "Running the browser tests..."
   npx playwright test --config e2e/playwright.config.mjs
 fi
