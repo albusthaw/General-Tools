@@ -14,6 +14,9 @@ export const ROUTES = [
   { name: "admin-audit", pattern: /^\/admin\/audit$/, admin: true, title: "Audit log" },
   { name: "admin-google", pattern: /^\/admin\/google$/, admin: true, title: "Google sign-in" },
   { name: "admin-email", pattern: /^\/admin\/email$/, admin: true, title: "Email (SMTP)" },
+  { name: "admin-apps", pattern: /^\/admin\/apps$/, admin: true, title: "Phone apps" },
+  // Only in the apps: account, server and admin settings.
+  { name: "more", pattern: /^\/more$/, appOnly: true, title: "More" },
 ];
 
 export function currentRoute() {

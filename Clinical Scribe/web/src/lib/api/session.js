@@ -1,6 +1,7 @@
 // Signing in and out, and what the signed-in person can do.
 import { appAddress } from "../../config.js";
 import { fromDatabase, UserError } from "../errors.js";
+import { appHooks } from "../platform/hooks.js";
 import { supabase } from "../supabase.js";
 
 function authMessage(error) {
@@ -29,6 +30,7 @@ export async function signIn(email, password) {
 }
 
 export async function signInWithGoogle() {
+  if (appHooks.startGoogleSignIn) return appHooks.startGoogleSignIn();
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: appAddress(), queryParams: { prompt: "select_account" } },

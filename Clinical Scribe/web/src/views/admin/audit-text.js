@@ -129,6 +129,10 @@ export function describe(entry) {
     case "settings.models_refreshed":
       text = `${actor} updated the AI model lists`;
       break;
+    case "settings.clinic_name_changed":
+      text = d.to ? `${actor} set the clinic name shown in the apps to "${d.to}"` : `${actor} removed the clinic name shown in the apps`;
+      if (d.from) details.push(["Before", d.from]);
+      break;
     case "settings.ai_updated":
       text = `${actor} changed AI settings`;
       for (const [key, change] of Object.entries(d)) {

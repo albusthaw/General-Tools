@@ -7,8 +7,10 @@ import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { dayLabel, duration, timeOnly } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
+import { appHooks } from "../../lib/platform/hooks.js";
 import { href, navigate } from "../../lib/router.js";
 import { scribeTabs } from "../shell.js";
+import { deleteRecording, renameRecording } from "./recording-actions.js";
 
 const PAGE = 30;
 
@@ -17,7 +19,7 @@ function row(scribe) {
   const notes = scribe.note_count === 1 ? "1 note" : `${scribe.note_count} notes`;
   return h(
     "a",
-    { class: "list-row", href: href(`/history/${scribe.id}`) },
+    { class: "list-row", href: href(`/history/${scribe.id}`), dataset: { id: scribe.id } },
     h("span", { class: "row-icon" }, icon(scribe.status === "transcribed" ? "noteWrite" : "waveform")),
     h(
       "span",
@@ -108,6 +110,20 @@ export async function renderHistory(container, route) {
     }, 300);
   });
   more.addEventListener("click", () => withBusy(more, () => load(false)));
+
+  // In the apps: pull down to refresh, swipe or long-press a row for its actions.
+  appHooks.enhanceList?.(listBox, {
+    onRefresh: () => load(true),
+    rows: ".list-row",
+    rowActions: (rowEl) => {
+      const scribe = items.find((item) => item.id === rowEl.dataset.id);
+      if (!scribe) return [];
+      return [
+        { label: "Rename", icon: "pencil", onClick: () => renameRecording(scribe, () => load(true)) },
+        scribe.status === "processing" ? null : { label: "Delete", icon: "trash", danger: true, onClick: () => deleteRecording(scribe, () => load(true)) },
+      ].filter(Boolean);
+    },
+  });
 
   await load(true);
   return () => clearTimeout(debounce);

@@ -19,6 +19,7 @@ async function action(name, payload = {}) {
 export const getSettings = () => call("admin_get_settings");
 export const updateSettings = (changes) => call("admin_update_settings", { p_changes: changes });
 export const usageSummary = () => call("admin_usage_summary");
+export const setClinicName = (name) => call("admin_set_clinic_name", { p_name: name });
 
 // People
 export const listUsers = ({ search = "", status = "", limit = 100, offset = 0 } = {}) =>

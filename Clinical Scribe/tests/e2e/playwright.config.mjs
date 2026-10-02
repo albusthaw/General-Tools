@@ -41,7 +41,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run build && npm run preview",
+    // The website, and the app build at /app/ (allowed to reach this computer's server),
+    // with the connect files a deploy adds.
+    command: "npm run build:all && node ../tests/e2e/write-connect.mjs && npm run preview",
+    env: { CS_LOCAL_APP: "1" },
     cwd: "../../web",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: true,

@@ -6,6 +6,7 @@ import { noteView } from "../../components/text-view.js";
 import { deleteTemplate, listTemplates } from "../../lib/api/templates.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
+import { appHooks } from "../../lib/platform/hooks.js";
 import { icon } from "../../lib/icons.js";
 import { store } from "../../lib/store.js";
 import { scribeTabs } from "../shell.js";
@@ -115,5 +116,7 @@ export async function renderTemplates(container, route) {
   }
 
   create.addEventListener("click", () => openTemplateBuilder({ onSaved: load }));
+  appHooks.pageAction?.(create);
+  appHooks.enhanceList?.(container, { onRefresh: load });
   await load();
 }

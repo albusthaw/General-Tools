@@ -1,5 +1,9 @@
-// Copies text, with a fallback for browsers without the Clipboard API.
+// Copies text, with a fallback for browsers without the Clipboard API. The
+// Android app uses the phone's clipboard directly.
+import { appHooks } from "./platform/hooks.js";
+
 export async function copyText(text) {
+  if (appHooks.copyText) return appHooks.copyText(text);
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);

@@ -8,19 +8,11 @@ import { checkbox, textArea } from "../../components/fields.js";
 import { recordingPart, unlockRecording } from "../../lib/api/admin.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
+import { saveFile } from "../../lib/files.js";
 import { clock, dateTime } from "../../lib/format.js";
 
 // The reason is offered again for the next recording in the same visit.
 let lastReason = "";
-
-function saveFile(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const link = h("a", { href: url, attrs: { download: filename } });
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-}
 
 function partRow(row, part, count, urls) {
   const label = `Part ${part.seq} of ${count} · ${clock(Number(part.duration_seconds) || 0)}`;
@@ -32,8 +24,8 @@ function partRow(row, part, count, urls) {
         const blob = await recordingPart(row.scribe_id, part.seq, { download: true });
         const day = String(row.recorded_at).slice(0, 10);
         const extension = /mp4|m4a/.test(part.mime_type) ? "m4a" : /ogg/.test(part.mime_type) ? "ogg" : "webm";
-        saveFile(new Blob([blob], { type: part.mime_type }), `clinical-scribe-${day}-part-${part.seq}.${extension}`);
-        toast("Download started. It is written in the audit log.");
+        const saved = await saveFile(new Blob([blob], { type: part.mime_type }), `clinical-scribe-${day}-part-${part.seq}.${extension}`);
+        if (saved) toast(saved === "saved" ? "The audio is saved. It is written in the audit log." : "Download started. It is written in the audit log.");
       } catch (error) {
         toast(messageOf(error), "bad");
       }

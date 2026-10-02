@@ -10,6 +10,7 @@ import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { clock, minutes, timeOnly } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
+import { appHooks } from "../../lib/platform/hooks.js";
 import * as recorder from "../../lib/recorder/recorder.js";
 import { isAdmin, profile, store } from "../../lib/store.js";
 import { dropScribe, requestFinish } from "../../lib/uploads/queue.js";
@@ -197,6 +198,7 @@ function drawReady(stage, state, templates, templatesError, redraw) {
     icon("mic", { size: 34 }),
   );
   startButton.addEventListener("click", async () => {
+    if (appHooks.beforeRecording && !(await appHooks.beforeRecording())) return;
     const templateId = templatePicker.value() || null;
     if (templateId) rememberTemplate(templateId);
     await recorder.start({ userId: profile().id, templateId, title: label.value() });
@@ -224,29 +226,23 @@ function drawReady(stage, state, templates, templatesError, redraw) {
   }
   if (templatesError) warnings.push(banner({ kind: "bad", text: templatesError }));
 
-  replace(
-    stage,
+  const card = h(
+    "section",
+    { class: "glass-card card recorder-card", attrs: { "aria-labelledby": "new-recording-title" } },
+    h("div", { class: "card-head" }, h("h2", { attrs: { id: "new-recording-title" }, text: "New recording" }), creditChip),
+    h("div", { class: "form-grid" }, templatePicker.el, label.el),
     h(
       "div",
-      { class: "stack" },
-      interruptedBanners(redraw),
-      warnings,
-      h(
-        "section",
-        { class: "glass-card card recorder-card", attrs: { "aria-labelledby": "new-recording-title" } },
-        h("div", { class: "card-head" }, h("h2", { attrs: { id: "new-recording-title" }, text: "New recording" }), creditChip),
-        h("div", { class: "form-grid" }, templatePicker.el, label.el),
-        h(
-          "div",
-          { class: "record-start" },
-          startButton,
-          h("p", { class: "record-caption", text: state.phase === "preparing" ? "Starting…" : "Start recording" }),
-          h("p", { class: "record-hint", text: "Keep this page open while you record. Audio is saved as you go." }),
-        ),
-      ),
+      { class: "record-start" },
+      startButton,
+      h("p", { class: "record-caption", text: state.phase === "preparing" ? "Starting…" : "Start recording" }),
+      h("p", { class: "record-hint", text: "Keep this page open while you record. Audio is saved as you go." }),
     ),
   );
-  return null;
+  appHooks.enhancePicker?.(templatePicker.input, { title: "Note template" });
+  const extras = appHooks.recorderExtras?.(card, { phase: "ready" });
+  replace(stage, h("div", { class: "stack" }, interruptedBanners(redraw), warnings, card));
+  return extras ?? null;
 }
 
 function drawRecording(stage, state, templates) {
@@ -276,34 +272,29 @@ function drawRecording(stage, state, templates) {
     if (ok) await recorder.discard();
   });
 
-  replace(
-    stage,
+  const card = h(
+    "section",
+    { class: ["glass-card", "card", "recorder-card", "is-live", paused && "is-paused"], attrs: { "aria-label": "Recording" } },
     h(
       "div",
-      { class: "stack" },
-      notice,
-      h(
-        "section",
-        { class: ["glass-card", "card", "recorder-card", "is-live", paused && "is-paused"], attrs: { "aria-label": "Recording" } },
-        h(
-          "div",
-          { class: "live-status", attrs: { role: "status" } },
-          h("span", { class: "live-dot", attrs: { "aria-hidden": "true" } }),
-          h("span", { text: finishing ? "Saving the recording…" : paused ? "Paused" : "Recording" }),
-        ),
-        timer,
-        live.el,
-        h("p", { class: "live-meta" }, h("span", { text: templateName }), state.title ? h("span", { text: state.title }) : null),
-        h("div", { class: "live-controls" }, pauseButton, finishButton),
-        h("div", { class: "live-secondary" }, discardButton),
-        h("p", { class: "record-hint", text: "Keep this screen open. Your audio is saved as you go." }),
-      ),
+      { class: "live-status", attrs: { role: "status" } },
+      h("span", { class: "live-dot", attrs: { "aria-hidden": "true" } }),
+      h("span", { text: finishing ? "Saving the recording…" : paused ? "Paused" : "Recording" }),
     ),
+    timer,
+    live.el,
+    h("p", { class: "live-meta" }, h("span", { text: templateName }), state.title ? h("span", { text: state.title }) : null),
+    h("div", { class: "live-controls" }, pauseButton, finishButton),
+    h("div", { class: "live-secondary" }, discardButton),
+    h("p", { class: "record-hint", text: "Keep this screen open. Your audio is saved as you go." }),
   );
+  const extras = appHooks.recorderExtras?.(card, { phase: state.phase });
+  replace(stage, h("div", { class: "stack" }, notice, card));
 
   return () => {
     clearInterval(tick);
     live.stop();
+    extras?.();
   };
 }
 

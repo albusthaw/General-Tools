@@ -81,7 +81,7 @@ Aurora: four large, blurred, slowly drifting blobs in sky blue, ice blue, pale p
 
 Side menu contents:
 - Clinical Scribe
-- **Admin settings** (admins only): User settings, AI settings, Review records, Audit log, Google sign-in, Email (SMTP)
+- **Admin settings** (admins only): User settings, AI settings, Recording, Review records, Audit log, Google sign-in, Email (SMTP), Phone apps
 - Account area at the bottom: initials, name, role, Change password, Sign out.
 
 ## 7. Screens
@@ -123,3 +123,7 @@ Buttons (primary, secondary glass, quiet, danger, icon-only with a label for scr
 - Error messages say what happened and what to do next, for example: "The AI service did not accept the saved key. Ask an administrator to check it in AI settings."
 - Keep the services' own names: ElevenLabs, Gemini, DeepSeek, Google, Supabase (only where the admin must act in Supabase).
 - Dates and times use the device's locale, 24-hour clock where the locale uses it.
+
+## Phone apps
+
+The Android app and the iPhone web app keep this look and wording, inside an app frame made for phones: a tab bar, large titles, sheets and gestures, styled after each phone. Their design is in `appdesign.md`.

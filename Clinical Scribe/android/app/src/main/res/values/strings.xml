@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Clinical Scribe</string>
+    <string name="custom_url_scheme">io.github.albusthaw.clinicalscribe</string>
+    <string name="recording_channel">Recording</string>
+    <string name="recording_title">Recording</string>
+    <string name="recording_text">Keeps going with the screen off</string>
+    <string name="recording_paused">Paused</string>
+    <string name="recording_paused_text">Tap Resume to carry on</string>
+    <string name="recording_pause">Pause</string>
+    <string name="recording_resume">Resume</string>
+</resources>

@@ -6,6 +6,7 @@ import { listAudit, listUsers } from "../../lib/api/admin.js";
 import { downloadText, toCsv } from "../../lib/csv.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
+import { appHooks } from "../../lib/platform/hooks.js";
 import { dateTime } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
 import { describe, GROUPS } from "./audit-text.js";
@@ -130,13 +131,14 @@ export async function renderAudit(container) {
           { label: "Details", value: (r) => describe(r).details.filter(([label]) => label !== "Device").map(([label, value]) => `${label}: ${value}`).join("; ") },
           { label: "Device", value: (r) => r.user_agent },
         ]);
-        downloadText(`clinical-scribe-audit-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-        toast(`${rows.length} entries downloaded.`);
+        const saved = await downloadText(`clinical-scribe-audit-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+        if (saved) toast(`${rows.length} entries ${saved === "saved" ? "saved" : "downloaded"}.`);
       } catch (error) {
         toast(messageOf(error), "bad", 6000);
       }
     })
   );
 
+  appHooks.enhanceList?.(box, { onRefresh: () => load(true) });
   await load(true);
 }

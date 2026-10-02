@@ -18,7 +18,7 @@ const SCRIBE_TABS = [
   { name: "history", path: "/history", label: "History", icon: "history" },
 ];
 
-const ADMIN_LINKS = [
+export const ADMIN_LINKS = [
   { name: "admin-users", path: "/admin/users", label: "User settings", icon: "users" },
   { name: "admin-ai", path: "/admin/ai", label: "AI settings", icon: "sliders" },
   { name: "admin-recordings", path: "/admin/recordings", label: "Recording", icon: "waveform" },
@@ -26,6 +26,7 @@ const ADMIN_LINKS = [
   { name: "admin-audit", path: "/admin/audit", label: "Audit log", icon: "scroll" },
   { name: "admin-google", path: "/admin/google", label: "Google sign-in", icon: "globe" },
   { name: "admin-email", path: "/admin/email", label: "Email (SMTP)", icon: "mail" },
+  { name: "admin-apps", path: "/admin/apps", label: "Phone apps", icon: "phone" },
 ];
 
 function tabName(route) {
@@ -161,7 +162,7 @@ export function mountShell(root, { onSignOut }) {
   let renderToken = 0;
 
   async function show(route) {
-    if (route.admin && !isAdmin()) {
+    if ((route.admin && !isAdmin()) || route.appOnly) {
       navigate("/scribe");
       return;
     }

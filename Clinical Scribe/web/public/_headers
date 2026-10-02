@@ -4,3 +4,12 @@
   Referrer-Policy: no-referrer
   Permissions-Policy: microphone=(self), camera=(), geolocation=()
   Content-Security-Policy: frame-ancestors 'none'
+
+# The phone apps read these from any address. They hold public values only.
+/connect.json
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
+/app/connect.json
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache

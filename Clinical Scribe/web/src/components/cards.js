@@ -5,6 +5,7 @@ import { dateTime } from "../lib/format.js";
 import { icon } from "../lib/icons.js";
 import { button, withBusy } from "./button.js";
 import { banner, chip, toast } from "./feedback.js";
+import { appHooks } from "../lib/platform/hooks.js";
 import { noteView, transcriptView } from "./text-view.js";
 
 export function copyButton(getText, { label = "Copy", copiedLabel = "Copied", onCopied, variant = "", size = "small" } = {}) {
@@ -12,7 +13,8 @@ export function copyButton(getText, { label = "Copy", copiedLabel = "Copied", on
   btn.addEventListener("click", async () => {
     const ok = await copyText(getText());
     if (ok) {
-      toast(copiedLabel);
+      if (appHooks.copied) appHooks.copied(btn);
+      else toast(copiedLabel);
       onCopied?.();
     } else {
       toast("Copying did not work. Select the text and copy it instead.", "bad");

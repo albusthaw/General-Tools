@@ -10,6 +10,7 @@ const ADMIN_PAGES = [
   ["/admin/audit", "Audit log"],
   ["/admin/google", "Google sign-in"],
   ["/admin/email", "Email (SMTP)"],
+  ["/admin/apps", "Phone apps"],
 ];
 
 test("the sign-in page explains a wrong password in plain words", async ({ page }) => {

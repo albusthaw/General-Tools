@@ -1,12 +1,13 @@
 // Sign-in page.
 import { button, withBusy } from "../components/button.js";
 import { passwordField, textField } from "../components/fields.js";
-import { config } from "../config.js";
+import { config, isApp } from "../config.js";
 import { signIn, signInWithGoogle } from "../lib/api/session.js";
 import { h, replace } from "../lib/dom.js";
 import { messageOf } from "../lib/errors.js";
 import { icon } from "../lib/icons.js";
 import { store } from "../lib/store.js";
+import { getAppOffer } from "./get-app.js";
 
 export function brand() {
   return h(
@@ -22,7 +23,9 @@ const REASONS = {
   signed_out: "You have signed out.",
 };
 
-export function renderLogin(root) {
+// `above` is an optional element shown between the brand and the title (the apps
+// show the connected clinic there).
+export function renderLogin(root, { above = null } = {}) {
   const reason = sessionStorage.getItem("cs-signout-reason");
   sessionStorage.removeItem("cs-signout-reason");
 
@@ -94,12 +97,14 @@ export function renderLogin(root) {
         "section",
         { class: "glass-card login-card", attrs: { "aria-labelledby": "login-title" } },
         brand(),
+        above,
         h("h1", { class: "login-title", attrs: { id: "login-title" }, text: "Sign in" }),
         reason && REASONS[reason] ? h("p", { class: "login-note", attrs: { role: "status" }, text: REASONS[reason] }) : null,
         form,
         google,
         h("p", { class: "login-help", text: "Forgot your password? Ask your administrator." }),
       ),
+      isApp ? null : getAppOffer(),
       h("p", { class: "login-foot", text: `Version ${config.appVersion}` }),
     ),
   );

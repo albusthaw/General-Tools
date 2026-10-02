@@ -99,3 +99,7 @@ verify_jwt = false
 
 [functions.admin]
 verify_jwt = false
+
+# Public connection details for the phone apps: public values only, no sign-in.
+[functions.connect]
+verify_jwt = false

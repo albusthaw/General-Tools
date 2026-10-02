@@ -15,6 +15,9 @@ import { mountShell } from "./shell.js";
 
 let root = null;
 let shell = null;
+// The frame and sign-in screen: the website's own, or the apps' (see app/start.js).
+let mountFrame = mountShell;
+let showLogin = renderLogin;
 let stopIdle = null;
 let inApp = false;
 let entering = false;
@@ -50,7 +53,12 @@ async function doSignOut(reason = "signed_out") {
   if (userId) await forgetUser(userId);
   store.set({ session: null, context: null });
   await signOut();
-  renderLogin(root);
+  showLogin(root);
+}
+
+// Signs out at once (the apps use this before changing server).
+export async function signOutNow() {
+  await doSignOut(null);
 }
 
 // Asks before signing out while audio is still being saved.
@@ -113,7 +121,7 @@ async function enterApp(session) {
     queue.start(context.profile.id);
     const interrupted = await recoverInterrupted(context.profile.id);
     store.set({ interrupted });
-    shell = mountShell(root, { onSignOut: requestSignOut });
+    shell = mountFrame(root, { onSignOut: requestSignOut });
     startIdle(context.idle_signout_minutes);
   } finally {
     entering = false;
@@ -131,8 +139,10 @@ export async function refreshContext() {
   }
 }
 
-export async function startApp(rootElement) {
+export async function startApp(rootElement, { frame = mountShell, login = renderLogin } = {}) {
   root = rootElement;
+  mountFrame = frame;
+  showLogin = login;
   window.addEventListener("beforeunload", (event) => {
     if (isRecording() || queue.status().running) {
       event.preventDefault();
@@ -146,14 +156,14 @@ export async function startApp(rootElement) {
   const session = await currentSession();
   cleanUrl();
   if (session) await enterApp(session);
-  else renderLogin(root);
+  else showLogin(root);
 
   onSessionChange((event, next) => {
     if (event === "SIGNED_OUT") {
       if (inApp) {
         leaveApp();
         store.set({ session: null, context: null });
-        renderLogin(root);
+        showLogin(root);
       }
     } else if (event === "SIGNED_IN" && !inApp && next) {
       enterApp(next);

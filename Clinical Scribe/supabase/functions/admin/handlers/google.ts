@@ -9,6 +9,11 @@ import type { AdminContext } from "../context.ts";
 
 const CLIENT_ID = /^[0-9A-Za-z._-]{6,180}\.apps\.googleusercontent\.com$/;
 
+// The Android app's page origin, and the link Google sign-in returns to in the
+// app (see appproject.md). The app has no web address of its own.
+const APP_ORIGIN = "https://localhost";
+export const APP_RETURN_LINK = "io.github.albusthaw.clinicalscribe://auth";
+
 async function currentSettings() {
   const { data, error } = await adminClient()
     .from("app_settings")
@@ -53,8 +58,11 @@ async function management(token: string, method: "GET" | "PATCH", body?: unknown
   return await response.json() as Record<string, unknown>;
 }
 
-// The app's own address, checked against the browser that sent the request.
-function appAddress(req: Request, value: unknown): string {
+// The app's own address, checked against the browser that sent the request. The
+// Android app sends none.
+function appAddress(req: Request, value: unknown): string | null {
+  const origin = (req.headers.get("origin") ?? "").replace(/\/+$/, "");
+  if ((value === undefined || value === null || value === "") && origin === APP_ORIGIN) return null;
   const raw = v.text(value, { label: "App address", min: 8, max: 300 });
   let url: URL;
   try {
@@ -66,7 +74,6 @@ function appAddress(req: Request, value: unknown): string {
   if (url.protocol !== "https:" && !(local && url.protocol === "http:")) {
     throw new AppError("invalid_input", "The app must be opened over https for Google sign-in.", 400);
   }
-  const origin = (req.headers.get("origin") ?? "").replace(/\/+$/, "");
   if (origin && origin !== url.origin) throw new AppError("invalid_input", "The app address does not match this page.", 400);
   return `${url.origin}${url.pathname}`;
 }
@@ -106,7 +113,9 @@ export async function save({ caller, body, req }: AdminContext) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  if (!allowList.includes(app)) allowList.push(app);
+  for (const entry of [app, APP_RETURN_LINK]) {
+    if (entry && !allowList.includes(entry)) allowList.push(entry);
+  }
 
   const patch: Record<string, unknown> = {
     external_google_enabled: enabled,
@@ -115,7 +124,7 @@ export async function save({ caller, body, req }: AdminContext) {
   if (clientId) patch.external_google_client_id = clientId;
   if (clientSecret) patch.external_google_secret = clientSecret;
   const site = String(current.site_url ?? "");
-  if (!site || /localhost|127\.0\.0\.1/.test(site)) patch.site_url = app;
+  if (app && (!site || /localhost|127\.0\.0\.1/.test(site))) patch.site_url = app;
 
   await management(token, "PATCH", patch);
   await rpc("svc_set_google", { p_enabled: enabled, p_client_id: clientId, p_actor: caller.id, p_user_agent: caller.userAgent });

@@ -51,6 +51,7 @@ There are two roles:
 5. **Audit log**: a read-only, filterable list of every admin action and every record review, with CSV export.
 6. **Google sign-in**: step-by-step guidance, the redirect address to copy into Google Cloud, Client ID and Client secret fields, an on/off switch. Saving applies the settings to the Supabase project's sign-in service.
 7. **Email (SMTP)**: a working settings form (server, port, security, user name, password, sender) that saves securely. It is deliberately not used by anything yet; the page says so.
+8. **Phone apps** (from 1.2.0): the server link with a QR code, the Android download, the iPhone install steps and the clinic name the apps show (audited). The phone apps themselves are planned in `appproject.md` and designed in `appdesign.md`.
 
 ### 2.4 Credit
 - Credit is counted in minutes of audio, kept separately for ElevenLabs and for Gemini, because the two services are paid separately.
@@ -206,11 +207,14 @@ Clinical Scribe/
 ├── project.md             this plan
 ├── design.md              look and wording rules
 ├── VERSION                app version (major.minor.patch)
+├── appproject.md, appdesign.md   plan and design of the phone apps
 ├── build/
 │   ├── deploy/            deploy and upgrade script, used by the workflow and by hand
+│   ├── android/           builds, checks and signs the Android app
 │   ├── record-migrations.mjs  records released migrations' fingerprints
-│   └── make-icons.mjs     draws the app icons
-├── Release/               README.txt only: this tool is published, not built into a file
+│   └── make-icons.mjs     draws the icons and the iPhone launch images
+├── Release/               the Android app (clinical-scribe.apk) and README.txt
+├── android/               Android project (Capacitor) with the app's own Java code
 ├── supabase/
 │   ├── config.toml        local development settings
 │   ├── migrations/        one file per area, applied in order
@@ -219,15 +223,18 @@ Clinical Scribe/
 │       ├── _shared/       auth, http, validation, errors, vault, providers, prompts
 │       ├── worker/        job runner, one module per job type
 │       ├── templates-ai/  template drafting
-│       └── admin/         one handler module per admin area
+│       ├── admin/         one handler module per admin area
+│       └── connect/       public connection details for the phone apps
 ├── web/
 │   ├── index.html, vite.config.js, package.json
 │   └── src/
 │       ├── main.js        start-up only
-│       ├── lib/           supabase client, API wrappers, DOM helpers, router, recorder, uploads, storage, format
-│       ├── components/    buttons, dialogs, toasts, tabs, menus, copy blocks, chips
+│       ├── lib/           supabase client, API wrappers, DOM helpers, router, recorder, uploads, storage, format,
+│       │                  connection (server link) and platform (device, app links, app hooks)
+│       ├── components/    buttons, dialogs, toasts, tabs, menus, copy blocks, chips, QR code
 │       ├── views/         one module per screen (sign-in, scribe, templates, history, each admin page)
-│       └── styles/        tokens, base, layout, components, one file per screen group
+│       ├── app/           phone apps only: start-up, connect, app frame, tabs, sheets, gestures, Android bridge
+│       └── styles/        tokens, base, layout, components, one file per screen group, app/ for the phone apps
 └── tests/
     ├── unit/              web app rules and deploy helpers (Node test runner)
     ├── functions/         server function helpers (Deno)

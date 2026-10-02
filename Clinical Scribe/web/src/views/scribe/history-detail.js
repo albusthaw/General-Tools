@@ -1,30 +1,19 @@
 // One recording in History: its transcript and every note written from it.
 import { button, withBusy } from "../../components/button.js";
 import { noteCard, statusChip, transcriptCard } from "../../components/cards.js";
-import { confirmDialog, openDialog } from "../../components/dialog.js";
 import { banner, loading, toast } from "../../components/feedback.js";
-import { textField } from "../../components/fields.js";
 import { menuButton } from "../../components/menu.js";
-import {
-  deleteScribe,
-  discardScribe,
-  finishScribe,
-  getNotes,
-  getScribe,
-  renameScribe,
-  retryNote,
-  retryScribe,
-} from "../../lib/api/scribes.js";
+import { finishScribe, getNotes, getScribe, retryNote, retryScribe } from "../../lib/api/scribes.js";
 import { listTemplates } from "../../lib/api/templates.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { dateTime, duration, timeOnly } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
 import { href, navigate } from "../../lib/router.js";
-import { dropScribe } from "../../lib/uploads/queue.js";
 import { refreshContext } from "../app.js";
 import { scribeTabs } from "../shell.js";
 import { anotherNoteForm } from "./another-note.js";
+import { deleteRecording, renameRecording } from "./recording-actions.js";
 
 const POLL_MS = 4000;
 
@@ -66,48 +55,11 @@ export async function renderHistoryDetail(container, route) {
   }
 
   function rename(scribe) {
-    const field = textField("Label", { value: scribe.title, maxLength: 120, autocomplete: "off" });
-    openDialog({
-      title: "Rename recording",
-      body: [field.el],
-      actions: [
-        { label: "Cancel" },
-        {
-          label: "Save",
-          variant: "primary",
-          onClick: async () => {
-            await renameScribe(scribeId, field.value());
-            toast("The label is saved.");
-            load();
-          },
-        },
-      ],
-    });
-    field.input.focus();
+    renameRecording(scribe, () => load());
   }
 
-  async function remove(scribe) {
-    const unfinished = scribe.status === "recording";
-    const ok = await confirmDialog({
-      title: "Delete this recording?",
-      message: unfinished
-        ? "The saved audio will be deleted. This cannot be undone."
-        : "The transcript and every note written from it will be deleted. This cannot be undone.",
-      confirmLabel: "Delete recording",
-      danger: true,
-      onConfirm: async () => {
-        if (unfinished) {
-          await dropScribe(scribeId);
-          await discardScribe(scribeId);
-        } else {
-          await deleteScribe(scribeId);
-        }
-      },
-    });
-    if (ok) {
-      toast("The recording has been deleted.");
-      navigate("/history");
-    }
+  function remove(scribe) {
+    deleteRecording(scribe, () => navigate("/history"));
   }
 
   function statusBanner(scribe) {

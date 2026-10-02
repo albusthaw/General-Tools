@@ -1,10 +1,13 @@
-// The web app part of the deploy: builds the app into web/dist with this project's
-// address and publishable key (both public by design), then checks that nothing
-// secret ended up in the files.
+// The web app part of the deploy: builds the website into web/dist with this
+// project's address and publishable key (both public by design), and the phone app
+// pages into web/dist/app with no server details at all. Then it adds the connect
+// file and the Android app download, and checks that nothing secret ended up in
+// the files.
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { DeployError, done, endSection, section } from "./output.mjs";
+import { DeployError, done, endSection, info, section } from "./output.mjs";
+import { addPhoneApps } from "./phone-apps.mjs";
 
 const windows = process.platform === "win32";
 const TEXT_FILE = /\.(html|js|mjs|css|json|webmanifest|txt|svg|map)$/i;
@@ -84,11 +87,28 @@ export async function buildWebApp(settings, keys) {
   if (!readFileSync(index, "utf8").includes(`connect-src 'self' ${origin}`)) {
     throw new DeployError("The built web app is missing its security policy for this project.");
   }
+
+  // The phone app pages ask for the server link, so they are built without one.
+  await npm(["run", "build:app"], web, { VITE_SUPABASE_URL: "", VITE_SUPABASE_PUBLISHABLE_KEY: "" }, "Building the phone app pages");
+  const appIndex = join(dist, "app", "index.html");
+  if (!existsSync(appIndex) || !readFileSync(appIndex, "utf8").includes("connect-src 'self' https: wss:")) {
+    throw new DeployError("The phone app pages were not built with their security policy.");
+  }
+  const { androidApp } = addPhoneApps(dist, {
+    root: settings.root,
+    projectUrl: settings.projectUrl,
+    version: settings.version,
+    app: settings.app,
+    publishableKey: keys.publishable,
+  });
+
   const leaks = findLeaks(dist, [keys.secret, settings.accessToken, settings.dbPassword, settings.admin?.password]);
   if (leaks.length > 0) {
     throw new DeployError(`The built web app holds something secret (${leaks.join(", ")}), so it was not published.`);
   }
-  done("The web app is built into web/dist, and holds no secrets.");
+  done("The web app is built into web/dist and the phone app pages into web/dist/app. Neither holds a secret.");
+  if (androidApp) done(`The Android app${androidApp.version ? ` ${androidApp.version}` : ""} is added as a download.`);
+  else info("No Android app is in the Release folder, so none is published. Run Build Clinical Scribe Android app to make one.");
   endSection();
-  return dist;
+  return { dist, androidApp };
 }
