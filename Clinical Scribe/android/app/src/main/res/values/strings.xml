@@ -7,6 +7,10 @@
     <string name="recording_text">Keeps going with the screen off</string>
     <string name="recording_paused">Paused</string>
     <string name="recording_paused_text">Tap Resume to carry on</string>
+    <string name="recording_paused_call">Paused for a call</string>
+    <string name="recording_paused_call_text">Tap Resume when the call has ended</string>
+    <string name="recording_paused_other_text">Another app played sound. Tap Resume to carry on</string>
+    <string name="recording_paused_mic_text">The microphone is in use. Tap Resume to try again</string>
     <string name="recording_pause">Pause</string>
     <string name="recording_resume">Resume</string>
 </resources>

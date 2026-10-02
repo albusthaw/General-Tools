@@ -10,11 +10,12 @@ import { snackbar } from "../snackbar.js";
 import { saveFile } from "./files.js";
 import { finishGoogleSignIn, startGoogleSignIn } from "./google.js";
 import { haptic } from "./haptics.js";
+import { createCapture, findRecording, recoverParts } from "./native-capture.js";
 import { beforeRecording } from "./permissions.js";
 import { watchRecorder } from "./recording.js";
 import { authStorage } from "./storage.js";
 
-export { authStorage, beforeRecording, haptic, saveFile, startGoogleSignIn };
+export { authStorage, beforeRecording, createCapture, findRecording, haptic, recoverParts, saveFile, startGoogleSignIn };
 
 const LINK_KEY = "cs-connect-link";
 const USED_KEY = "cs-launch-link-used";

@@ -183,8 +183,9 @@ The Android recording notification is not a hook: `app/native/recording.js` watc
 
 | Feature | Android app | iPhone web app |
 | --- | --- | --- |
-| Recording with the screen off | Foreground service of type microphone, started while the app is open, with a notification showing the time and Pause/Resume. Stops on finish, discard or sign-out. | Not possible on iPhone; the screen is kept awake and the recorder asks to keep the app open. |
-| Keep the screen awake | `FLAG_KEEP_SCREEN_ON` while recording | Screen Wake Lock |
+| Recording with the screen off | The app's own recorder (section 5.1) in a foreground service of type microphone, with a wake lock and a notification showing the time and Pause/Resume. The screen may turn off as usual. | iOS mutes web apps when the phone locks, so **Screen off** turns the screen black with touches locked while the phone stays awake (section 5.1). If the phone locks anyway, the recording pauses. |
+| Keep the screen awake | Not needed | Screen Wake Lock while recording; Screen off mode |
+| Calls and other sound | Pause (never stop): audio focus lost, phone or internet call, microphone silenced by the system | Pause (never stop): audio session interrupted, microphone muted or ended, phone locked |
 | Microphone permission | Explained first, then Android's prompt; "Open Settings" if refused | Safari's prompt (asked again in each session) |
 | Notifications permission | Asked before the first recording (Android 13+) | Not used |
 | Sign-in storage | Encrypted with a non-exportable AES-256-GCM key in the Android Keystore | Local storage, as the website |
@@ -196,6 +197,32 @@ The Android recording notification is not a hook: `app/native/recording.js` watc
 | Privacy in recent apps | Screens hidden, screenshots blocked (`FLAG_SECURE`) | Not available on iPhone |
 | Offline | App shell is inside the app | Service worker keeps the app shell |
 | Updates | "A newer version of the app is ready" with a download link | Service worker updates on the next start |
+
+### 5.1 Recording that never stops (1.3.0)
+
+**Rule for every app and the website:** a call, other sound, a lost microphone or a locked phone never ends a recording. The recording pauses, keeps everything recorded so far, says why, and continues with **Resume**. Only Finish and Discard end it. Resume is always the person's choice, so nothing is recorded that they did not expect.
+
+**Android: the app records by itself.** The page no longer records through the web view. `AudioPartRecorder.java` reads the microphone with `AudioRecord` (44.1 kHz mono), encodes AAC (48 kbps) with `MediaCodec` and writes ADTS files, one per part (`Adts.java`, `PartFiles.java`: `recordings/<recording id>/0001.aac`). Each frame is written as it is made, so a part survives a crash up to its last frame; a new part starts at a frame boundary, so nothing is lost between parts. It runs in the foreground service (type microphone, kept when the app is swiped away) with a partial wake lock that never outlasts the recording limit, so it carries on with the screen off. `RecorderHub.java` holds the one live recording: state, pause reasons, the time recorded, the recording limit, the notification and the observers. The microphone and encoder are opened before the service starts, and nothing is written until both are ready.
+- The page collects finished parts (`recorderPart` events, and a full check when the app is shown again) and reads each part in 768 KB pieces into the same upload queue (IndexedDB) as the website. A part file is deleted only after the queue has stored it. The server already accepts `audio/aac`.
+- **Pause** and **Resume** in the notification act on the recorder directly, even while the page is asleep.
+- After the page was closed (the system may close it in the background), the next start takes up the recording that is still running, or finishes it when it ended meanwhile. Parts left by a crash are queued for their owner on the next start; parts nobody on the phone can save any more are removed.
+- The recording limit (longest recording, minutes left) is also kept by the recorder, so it stops on time with the screen off.
+- Signing out ends the recording on the phone and removes its audio, as the sign-out warning says.
+
+**Android interruptions** (`Interruptions.java`, `PauseRules.java`): the recorder holds audio focus while recording. Losing it (a call ringing, music, video, an alarm, voice commands) pauses with the reason "call" or "other sound". The phone's audio mode (ringing, in a call, in an internet call) also pauses, and on Android 10 and newer so does a microphone silenced by the system. Resume is refused while a call is going on. Short notification sounds only lower other sound, so they do not pause.
+
+**Web and iPhone interruptions** (`lib/recorder/web-capture.js`): the Audio Session API (type `play-and-record` while recording; state "interrupted"), a muted or ended microphone track, and on iPhone the page being hidden (iOS stops the microphone of web apps when the phone locks) pause the recording. After an interruption, Resume keeps the paused part as it is, opens the microphone again when it is not working, and starts a new part; Resume after the person's own pause carries on in the same part. Sound played by Clinical Scribe itself (any audio or video element) pauses the recording everywhere, the Android app included.
+
+**iPhone Screen off** (`app/screen-off.js`): iOS lets no web app use the microphone while the phone is locked (WebKit stops capture; Safari 27 keeps this rule). **Screen off** keeps the app in front instead:
+- a black screen (the pixels of OLED iPhones are then off, so it looks like a dark screen and saves power);
+- touches do nothing, so a pocket cannot press anything; press and hold for about a second to come back (the finger lifting afterwards presses nothing);
+- the screen wake lock keeps the phone from locking (iOS 18.4 and newer in Home Screen web apps). On older iOS, or when the request fails (for example in Low Power Mode), the dark screen says how to stop the phone locking;
+- a dim timer shows the recording is running and moves every minute so it never marks the screen;
+- it ends by itself when the recording pauses or finishes, so the reason is shown at once;
+- if motion access is allowed (asked once, the first time Screen off is tapped), laying the phone face down while recording turns the screen dark by itself.
+The same button is offered in Android browsers. The Android app does not need it.
+
+**Recorder modules (web):** `lib/recorder/recorder.js` keeps the flow (server, limits, upload queue, pause reasons, taking up a phone recording); a *capture* records: `web-capture.js` (MediaRecorder parts and 5-second pieces in IndexedDB) or, in the Android app, `app/native/native-capture-core.js`. `lib/recorder/capture-rules.js` holds the pause reasons and their wording. Both captures get their outside parts passed in, so they are tested without a browser or a phone.
 
 ## 6. Security gates
 
@@ -272,13 +299,13 @@ Needs JDK 21, Node 22 and the Android SDK (platform 36, build tools 36). GitHub'
 
 | Group | What it checks |
 | --- | --- |
-| Unit (Node) | Link tidying, lookup order and problems (offline, not found, too old, secret key), answer checks, the server's clinic name winning, version rules, platform detection, connect and return links, recent servers, the published Android app, saving files in parts on Android, the signing key text and plan, the checks on the finished Android app, the Release notes, the deploy's connect files and header files |
+| Unit (Node) | Link tidying, lookup order and problems (offline, not found, too old, secret key), answer checks, the server's clinic name winning, version rules, platform detection, connect and return links, recent servers, the published Android app, saving files in parts on Android, the signing key text and plan, the checks on the finished Android app, the Release notes, the deploy's connect files and header files; recording from the browser with stand-ins (parts handed on, a muted or stopped microphone, a locked iPhone and the audio session pausing with a reason, Resume opening the microphone again), the Android app's recorder seen from the page with a stand-in phone (start settings, parts read in pieces and removed only after queueing, pauses and endings passed on, Resume refused during a call, parts left after a crash), the pause messages and the Screen off rules |
 | Server functions (Deno) | The `connect` answer builder gives only public values and never takes a secret key for a public one |
 | Server (local stack) | `connect` answers with the publishable key, version and site for any address and only answers reading; clinic name saved, audited once, admin only, odd names refused |
 | Deploy (local stack) | The secrets for the apps (`CS_PUBLISHABLE_KEY`, `CS_SITE_URL`, the Android app's origin) and the app's return link are saved, and existing sign-in settings are kept |
-| Browser (Playwright) | App build at `/app/`: iPhone in Safari (install steps, the clinic found from the site, link errors, connect, sign in, every tab, the "+" button in the top bar) and from the Home Screen (no install steps, every admin page with the back button, Phone apps with the QR code); Android look (recording with the mini recorder on other tabs, swipe and long-press rename, pull to refresh, floating button, every tab at 320 px without sideways scrolling, Change server with the recent servers); the website's phone offer on iPhone and Android; no unexpected console errors. The Android look runs in Chrome on Android, which uses the same pages and frame as the Android app; the parts that need Android itself are covered by the Android checks and the real-phone list below |
-| Android (Gradle and the build script) | Java unit tests (links, notification time, file rules), Android lint with no issues, release build, signature, a second build with the kept key giving the same certificate, package details, compiled settings and files |
-| On a real phone (cannot run here: no emulator in this environment) | Install, record with the screen off, Pause/Resume from the notification, Google sign-in round trip, Save to… screen, back gesture, updates over an older copy |
+| Browser (Playwright) | App build at `/app/`: iPhone in Safari (install steps, the clinic found from the site, link errors, connect, sign in, every tab, the "+" button in the top bar) and from the Home Screen (no install steps, every admin page with the back button, Phone apps with the QR code); Android look (recording with the mini recorder on other tabs, swipe and long-press rename, pull to refresh, floating button, every tab at 320 px without sideways scrolling, Change server with the recent servers); the website's phone offer on iPhone and Android; recording on an iPhone with Screen off (a tap does nothing, press and hold comes back, a locked screen and a call pause it with the reason, Resume carries on); on the website, a stopped microphone and sound played by the app pause the recording, Resume opens the microphone again and the note is still made; no unexpected console errors. The Android look runs in Chrome on Android, which uses the same pages and frame as the Android app; the parts that need Android itself are covered by the Android checks and the real-phone list below |
+| Android (Gradle and the build script) | Java unit tests (links, notification time, file rules, ADTS frames and scanning of cut or broken parts, part files and their limits, pause reasons for calls and other sound); the recorder itself on a stand-in phone (Robolectric, Android 16 and 11): whole parts until stopped, the wake lock only while recording, a ringing call, other sound and an internet call pausing with the reason, Resume waiting for a call to end, short sounds not pausing, a lost microphone opened again, the limit stopping by itself, Discard removing everything, the notification texts and the service; Android lint with no issues, release build, signature, a second build with the kept key giving the same certificate, package details, compiled settings and files |
+| On a real phone (cannot run here: no emulator in this environment) | Install, record with the screen off for a long time, a call and music during a recording (pause, then Resume), Pause/Resume from the notification, swiping the app away while recording, Screen off and face down on an iPhone, Google sign-in round trip, Save to… screen, back gesture, updates over an older copy |
 
 ## 10. Build order
 
@@ -292,6 +319,7 @@ Needs JDK 21, Node 22 and the Android SDK (platform 36, build tools 36). GitHub'
 
 ## 11. Known limits
 
-- **iPhone**: recording stops if the screen locks or another app is opened (an iOS rule for web apps); the microphone is asked again in each session; no vibration; no screenshot protection.
+- **iPhone**: a web app cannot record while the phone is locked or another app is open (an iOS rule). The recording then pauses and keeps everything; Screen off is the way to record with a dark screen. The microphone is asked again in each session; no vibration; no screenshot protection.
+- **Android phones with strict battery savers** (some brands) may still stop apps in the background. The README says how to allow Clinical Scribe to run.
 - **Android installs outside Google Play**: from 30 September 2026, Brazil, Indonesia, Singapore and Thailand allow such installs only from developers verified with Google (more countries from 2027). Publishing widely may need the owner to register as a developer with Google; Google Play publishing is not part of this work.
 - **Testing**: this environment has no Android emulator or iPhone, so the checks marked "real phone" in section 9 must be done on a device.

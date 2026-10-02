@@ -136,3 +136,100 @@ html[data-app] .recorder-card.app-live .live-controls > .btn.primary {
     transform: scale(1.12);
   }
 }
+
+html[data-app] .recorder-card.app-live .live-secondary {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Screen off (iPhone): a black screen while the recording carries on. Touches do
+   nothing until a press and hold; the dim timer moves now and then. */
+.screen-off {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #000;
+  color: #48484a;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  outline: none;
+}
+
+.screen-off-status {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  transform: translate(var(--x, 24px), var(--y, 120px));
+  transition: transform 1.2s ease;
+}
+
+.screen-off-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7a1e1a;
+}
+
+.screen-off-hint {
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--sa-bottom, 0px) + 48px);
+  left: 0;
+  margin: 0;
+  padding: 0 24px;
+  font-size: 15px;
+  color: #636366;
+  text-align: center;
+  transition: opacity 1.5s ease;
+}
+
+.screen-off-hint.is-faded {
+  opacity: 0;
+}
+
+.screen-off-warning {
+  position: absolute;
+  top: calc(var(--sa-top, 0px) + 24px);
+  right: 24px;
+  left: 24px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #8e8e93;
+  text-align: center;
+}
+
+.screen-off-hold {
+  position: absolute;
+  bottom: calc(var(--sa-bottom, 0px) + 96px);
+  left: 50%;
+  width: 56px;
+  height: 56px;
+  margin-left: -28px;
+  border: 3px solid #3a3a3c;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.screen-off.is-holding .screen-off-hold {
+  border-color: #8e8e93;
+  opacity: 1;
+  transform: scale(1);
+  transition: transform 1.2s linear, border-color 1.2s linear, opacity 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-off-status,
+  .screen-off-hint,
+  .screen-off.is-holding .screen-off-hold {
+    transition: none;
+  }
+}

@@ -39,6 +39,16 @@ android {
         includeInApk = false
         includeInBundle = false
     }
+    testOptions {
+        unitTests {
+            // The recorder tests run Android's own classes on the computer (Robolectric).
+            includeAndroidResources = true
+            all {
+                // Robolectric reads file handle details that newer Java hides by default.
+                jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED', '--add-opens=java.base/jdk.internal.access=ALL-UNNAMED'
+            }
+        }
+    }
 }
 
 repositories {
@@ -56,6 +66,7 @@ dependencies {
     implementation project(':capacitor-android')
     implementation project(':capacitor-cordova-android-plugins')
     testImplementation "junit:junit:$junitVersion"
+    testImplementation "org.robolectric:robolectric:4.17"
 }
 
 apply from: 'capacitor.build.gradle'

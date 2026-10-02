@@ -162,6 +162,79 @@ test.describe("iPhone", () => {
     await expect(page.getByText("http://127.0.0.1:4173/app/")).toBeVisible();
     expect(problems).toEqual([]);
   });
+
+  test("recording carries on with Screen off; a locked screen or a call pauses it until Resume", async ({ page }) => {
+    const problems = watchAppProblems(page);
+    await page.addInitScript(() => {
+      Object.defineProperty(window.navigator, "standalone", { value: true });
+      // Safari's audio session, which tells the page when a call takes the sound.
+      const session = Object.assign(new EventTarget(), { type: "auto", state: "active" });
+      Object.defineProperty(window.navigator, "audioSession", { value: session });
+      // Lets the test lock the screen.
+      window.__hidden = false;
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (window.__hidden ? "hidden" : "visible") });
+    });
+    await page.goto("/app/");
+    await page.getByRole("button", { name: "Connect" }).click();
+    await signInHere(page, USER);
+
+    await page.getByRole("button", { name: "Start recording" }).click();
+    const status = page.locator(".live-status");
+    await expect(status).toHaveText(/Recording/);
+    await expect(page.locator(".record-hint")).toHaveText("Use Screen off to keep recording with a dark screen.");
+    expect(await page.evaluate(() => navigator.audioSession.type)).toBe("play-and-record");
+
+    // Screen off: a black screen where a tap does nothing; a press and hold shows the app.
+    await page.getByRole("button", { name: "Screen off" }).click();
+    const dark = page.locator(".screen-off");
+    await expect(dark).toBeVisible();
+    await expect(dark.locator(".screen-off-time")).toHaveText(/^Recording \d+:\d{2}$/);
+    await expect(dark.getByText("Press and hold to show Clinical Scribe")).toBeVisible();
+    await expectNoSideScroll(page);
+    const middle = await centreOf(page.locator(".pause-circle"));
+    await touch(page, [{ type: "touchStart", at: middle }, { wait: 200 }, { type: "touchEnd" }]);
+    await page.waitForTimeout(400);
+    await expect(dark).toBeVisible();
+    await expect(status).toHaveText(/Recording/);
+    await touch(page, [{ type: "touchStart", at: middle }, { wait: 1600 }, { type: "touchEnd" }]);
+    await expect(dark).toBeHidden();
+    await page.waitForTimeout(400);
+    await expect(status, "lifting the finger does not press the button underneath").toHaveText(/Recording/);
+
+    // The phone locks: an iPhone stops the microphone, so the recording pauses.
+    await page.evaluate(() => {
+      window.__hidden = true;
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.__hidden = false;
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(status).toHaveText(/Paused/);
+    await expect(page.getByText("Paused because the screen locked or another app opened. Tap Resume to carry on.")).toBeVisible();
+    await page.getByRole("button", { name: "Resume" }).click();
+    await expect(status).toHaveText(/Recording/);
+
+    // A call during Screen off: the recording pauses and the app shows why.
+    await page.getByRole("button", { name: "Screen off" }).click();
+    await expect(dark).toBeVisible();
+    await page.evaluate(() => {
+      navigator.audioSession.state = "interrupted";
+      navigator.audioSession.dispatchEvent(new Event("statechange"));
+    });
+    await expect(dark).toBeHidden();
+    await expect(status).toHaveText(/Paused/);
+    await expect(page.getByText(/^Paused because the microphone was needed elsewhere/)).toBeVisible();
+    await page.evaluate(() => {
+      navigator.audioSession.state = "active";
+      navigator.audioSession.dispatchEvent(new Event("statechange"));
+    });
+    await page.getByRole("button", { name: "Resume" }).click();
+    await expect(status).toHaveText(/Recording/);
+    await page.waitForTimeout(1500);
+    await page.getByRole("button", { name: "Finish" }).click();
+    await expect(page.locator(".progress-card")).toBeVisible();
+    expect(await page.evaluate(() => navigator.audioSession.type), "the audio session is handed back").toBe("auto");
+    expect(problems).toEqual([]);
+  });
 });
 
 test.describe("Android look", () => {
