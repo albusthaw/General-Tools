@@ -5,6 +5,7 @@ import { sleep } from "./http.mjs";
 import { pickKeys } from "./management-api.mjs";
 import { riskyMigrations } from "./migrations.mjs";
 import { DeployError, done, endSection, info, mask, section, warn } from "./output.mjs";
+import { allowedOrigins, APP_RETURN_LINK, phoneAppSecrets } from "./phone-apps.mjs";
 import { projectApi } from "./project-api.mjs";
 
 // "Letters and digits", in the form the Management API expects.
@@ -48,7 +49,8 @@ export async function readKeys(api) {
 }
 
 // Nobody can sign themselves up, email sign-in stays on and the password rule
-// matches the app. Addresses already allowed (for example by Google sign-in) are kept.
+// matches the app. Sign-in may return to the website (and the iPhone web app
+// inside it) and to the Android app. Addresses already allowed are kept.
 export function signInPatch(current, app) {
   const patch = {
     disable_signup: true,
@@ -56,17 +58,15 @@ export function signInPatch(current, app) {
     password_min_length: Math.max(10, Number(current?.password_min_length) || 0),
   };
   if (!current?.password_required_characters) patch.password_required_characters = LETTERS_AND_DIGITS;
-  if (app) {
-    const allowed = String(current?.uri_allow_list ?? "")
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    for (const entry of [app.url, `${app.url}**`]) {
-      if (!allowed.includes(entry)) allowed.push(entry);
-    }
-    patch.uri_allow_list = allowed.join(",");
-    patch.site_url = app.url;
+  const allowed = String(current?.uri_allow_list ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  for (const entry of [...(app ? [app.url, `${app.url}**`] : []), APP_RETURN_LINK]) {
+    if (!allowed.includes(entry)) allowed.push(entry);
   }
+  patch.uri_allow_list = allowed.join(",");
+  if (app) patch.site_url = app.url;
   return patch;
 }
 
@@ -176,11 +176,12 @@ export async function deployServer(settings, api, keys) {
   endSection();
 
   section("Saving the server function settings");
-  const secrets = [{ name: "CS_PROJECT_REF", value: settings.ref }];
-  if (settings.app) secrets.push({ name: "CS_ALLOWED_ORIGINS", value: settings.app.origin });
+  const secrets = [{ name: "CS_PROJECT_REF", value: settings.ref }, ...phoneAppSecrets({ app: settings.app, publishableKey: keys.publishable })];
+  if (settings.app) secrets.push({ name: "CS_ALLOWED_ORIGINS", value: allowedOrigins(settings.app) });
   await api.setSecrets(secrets);
-  if (settings.app) done(`Only pages from ${settings.app.origin} may call the server functions.`);
+  if (settings.app) done(`Only pages from ${settings.app.origin} and the Android app may call the server functions.`);
   else warn("No app address was given, so pages from any address may call the server functions. Every call still needs a valid sign-in.");
+  done("The phone apps can find this server through its server link.");
   endSection();
 
   section("Checking that every record is kept");

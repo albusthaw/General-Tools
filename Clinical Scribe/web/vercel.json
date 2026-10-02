@@ -9,6 +9,20 @@
         { "key": "Permissions-Policy", "value": "microphone=(self), camera=(), geolocation=()" },
         { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" }
       ]
+    },
+    {
+      "source": "/connect.json",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    },
+    {
+      "source": "/app/connect.json",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
     }
   ]
 }

@@ -15,6 +15,7 @@ const TOKEN = "sbp_test_management_token_0001";
 const DB_PASSWORD = "local-db-password-0001";
 const ADMIN = { email: "owner@clinic.test", password: "Owner-pass-2026", name: "Dr Morgan Reed" };
 const APP = "https://clinic.example.test/scribe/";
+const RETURN = "io.github.albusthaw.clinicalscribe://auth";
 const VERSION = readFileSync(join(toolRoot, "VERSION"), "utf8").trim();
 const LETTERS_AND_DIGITS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789";
 const STRICTER = "abcdefghijklmnopqrstuvwxyz:ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789";
@@ -95,7 +96,12 @@ test("a first deploy sets up the server, the sign-in settings and the first admi
     assert.equal(resolve(call.cwd), resolve(toolRoot), "the tool runs in the Clinical Scribe folder");
   }
 
-  assert.deepEqual(await mock("/__secrets"), { CS_PROJECT_REF: REF, CS_ALLOWED_ORIGINS: "https://clinic.example.test" });
+  assert.deepEqual(await mock("/__secrets"), {
+    CS_PROJECT_REF: REF,
+    CS_PUBLISHABLE_KEY: localStack().publishableKey,
+    CS_SITE_URL: APP,
+    CS_ALLOWED_ORIGINS: "https://clinic.example.test,https://localhost",
+  });
 
   const auth = await mock("/__auth_config");
   assert.equal(auth.disable_signup, true);
@@ -103,7 +109,7 @@ test("a first deploy sets up the server, the sign-in settings and the first admi
   assert.equal(auth.password_min_length, 10);
   assert.equal(auth.password_required_characters, LETTERS_AND_DIGITS);
   assert.equal(auth.site_url, APP);
-  assert.equal(auth.uri_allow_list, `${APP},${APP}**`);
+  assert.equal(auth.uri_allow_list, `${APP},${APP}**,${RETURN}`);
 
   assert.equal(sql("select value from app_private.runtime_config where key = 'functions_url'"), "http://kong:8000/functions/v1");
   assert.equal(setting("schema_version"), VERSION);
@@ -147,7 +153,7 @@ test("running the deploy again is safe, keeps settings and records the upgrade",
   assert.equal(auth.external_google_enabled, true, "Google sign-in stays as the admin set it");
   assert.equal(auth.password_min_length, 12, "a stricter length is kept");
   assert.equal(auth.password_required_characters, STRICTER, "a stricter rule is kept");
-  assert.equal(auth.uri_allow_list, `${APP},http://localhost:5173/,${APP}**`, "listed addresses are kept, none twice");
+  assert.equal(auth.uri_allow_list, `${APP},http://localhost:5173/,${APP}**,${RETURN}`, "listed addresses are kept, none twice");
 
   assert.equal(setting("schema_version"), VERSION);
   assert.equal(

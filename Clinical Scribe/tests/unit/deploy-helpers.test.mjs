@@ -89,24 +89,26 @@ test("newer keys are sent only as apikey; older keys also as a bearer token", ()
 
 test("sign-in settings close sign-up and keep what is already set", () => {
   const app = parseAppUrl("https://name.github.io/General-Tools/");
+  const RETURN = "io.github.albusthaw.clinicalscribe://auth";
   assert.deepEqual(signInPatch({ password_min_length: 6, password_required_characters: "", uri_allow_list: "" }, app), {
     disable_signup: true,
     external_email_enabled: true,
     password_min_length: 10,
     password_required_characters: LETTERS_AND_DIGITS,
-    uri_allow_list: "https://name.github.io/General-Tools/,https://name.github.io/General-Tools/**",
+    uri_allow_list: `https://name.github.io/General-Tools/,https://name.github.io/General-Tools/**,${RETURN}`,
     site_url: "https://name.github.io/General-Tools/",
   });
   const kept = signInPatch(
-    { password_min_length: 14, password_required_characters: "abc:ABC:123", uri_allow_list: "https://name.github.io/General-Tools/, http://localhost:5173/" },
+    { password_min_length: 14, password_required_characters: "abc:ABC:123", uri_allow_list: `https://name.github.io/General-Tools/, ${RETURN}, http://localhost:5173/` },
     app,
   );
   assert.equal(kept.password_min_length, 14);
   assert.equal("password_required_characters" in kept, false);
-  assert.equal(kept.uri_allow_list, "https://name.github.io/General-Tools/,http://localhost:5173/,https://name.github.io/General-Tools/**");
+  assert.equal(kept.uri_allow_list, `https://name.github.io/General-Tools/,${RETURN},http://localhost:5173/,https://name.github.io/General-Tools/**`);
+  // Without a website address, sign-in may still return to the Android app.
   const noApp = signInPatch({}, null);
   assert.equal("site_url" in noApp, false);
-  assert.equal("uri_allow_list" in noApp, false);
+  assert.equal(noApp.uri_allow_list, RETURN);
 });
 
 test("the leak check finds secret keys, tokens and server JWTs in built files", () => {

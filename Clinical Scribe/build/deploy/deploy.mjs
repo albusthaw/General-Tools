@@ -44,7 +44,7 @@ async function checkCli(settings) {
   }
 }
 
-function report(settings, plan, server) {
+function report(settings, plan, server, web) {
   const lines = [`## Clinical Scribe ${settings.version}`];
   if (plan.checkOnly) {
     lines.push("", "Everything the deploy needs is in place. Nothing was changed.");
@@ -55,6 +55,14 @@ function report(settings, plan, server) {
   if (plan.web) lines.push("- **Web app:** built and checked for secrets.");
   if (settings.app) lines.push(`- **App address:** ${settings.app.url}`);
   else if (plan.web) lines.push("- **App address:** put the files in web/dist on any static web host (see the README).");
+  if (plan.web && settings.app) {
+    lines.push(`- **iPhone and iPad:** ${settings.app.url}app/ (open in Safari, then Add to Home Screen)`);
+    lines.push(
+      web?.androidApp
+        ? `- **Android app:** ${settings.app.url}${web.androidApp.path}${web.androidApp.version ? ` (version ${web.androidApp.version})` : ""}`
+        : "- **Android app:** not published yet. Run Build Clinical Scribe Android app, then run this deploy again.",
+    );
+  }
   if (server) lines.push(`- **First admin:** ${ADMIN_TEXT[server.admin] ?? ADMIN_TEXT.exists}`);
   return lines;
 }
@@ -79,16 +87,17 @@ async function main() {
   endSection();
 
   let server = null;
+  let web = null;
   if (plan.checkOnly) {
     checkDatabaseChanges(settings);
   } else {
     // The web app is built first, so a failed build stops the deploy before the
     // server is changed.
-    if (plan.web) await buildWebApp(settings, keys);
+    if (plan.web) web = await buildWebApp(settings, keys);
     if (plan.server) server = await deployServer(settings, api, keys);
     if (settings.app) setOutput("app_url", settings.app.url);
   }
-  summary(report(settings, plan, server));
+  summary(report(settings, plan, server, web));
 }
 
 main().catch((error) => {
