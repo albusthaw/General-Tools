@@ -1,5 +1,6 @@
 // Finds recordings that were interrupted on this device (closed tab, crash, flat
 // battery) and saves the audio that was kept locally.
+import { appHooks } from "../platform/hooks.js";
 import { idb } from "../uploads/idb.js";
 import { addPart } from "../uploads/queue.js";
 
@@ -15,10 +16,12 @@ export function holdRecordingLock(scribeId) {
   return () => release?.();
 }
 
+// Recordings that a page is recording (a lock that is held, or just asked for).
 async function liveRecordings() {
   try {
     const snapshot = await navigator.locks?.query?.();
-    return new Set((snapshot?.held ?? []).map((lock) => lock.name).filter((name) => name.startsWith(LOCK_PREFIX)).map((name) => name.slice(LOCK_PREFIX.length)));
+    const locks = [...(snapshot?.held ?? []), ...(snapshot?.pending ?? [])];
+    return new Set(locks.map((lock) => lock.name).filter((name) => name?.startsWith(LOCK_PREFIX)).map((name) => name.slice(LOCK_PREFIX.length)));
   } catch {
     return new Set();
   }
@@ -26,15 +29,22 @@ async function liveRecordings() {
 
 // Returns recordings that were never finished, after queueing their saved audio.
 export async function recoverInterrupted(userId) {
-  let recordings = [];
+  let entries = [];
   let chunks = [];
   try {
-    recordings = (await idb.all("recordings")).filter((row) => row.userId === userId);
+    entries = await idb.all("recordings");
     chunks = (await idb.all("chunks")).filter((row) => row.userId === userId);
   } catch {
     return [];
   }
+  const recordings = entries.filter((row) => row.userId === userId);
   const live = await liveRecordings();
+  // The Android app's own recorder keeps its parts on the phone until they are queued.
+  try {
+    await appHooks.recoverPhoneParts?.({ userId, entries, live, addPart });
+  } catch {
+    // The parts stay on the phone for the next start.
+  }
   const interrupted = [];
 
   for (const recording of recordings) {

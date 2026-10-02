@@ -1,18 +1,17 @@
-// The recorder. It records in self-contained parts (a fresh file every few
-// minutes), keeps every 5-second chunk in IndexedDB while recording, and hands
-// finished parts to the upload queue. It lives outside the screens, so moving to
-// another page never stops a recording.
+// The recorder. It lives outside the screens, so moving to another page never
+// stops a recording. The sound itself comes from a capture: the browser's
+// microphone (web-capture.js), or in the Android app the phone's own recorder,
+// which carries on with the screen off (app/native/native-capture.js). Finished
+// parts go to the upload queue. A call, other sound or a locked iPhone pauses the
+// recording and says why; it never ends it.
 import { discardScribe, startScribe } from "../api/scribes.js";
 import { messageOf, UserError } from "../errors.js";
+import { appHooks } from "../platform/hooks.js";
 import { idb } from "../uploads/idb.js";
-import { addPart, dropScribe, requestFinish, saveRecordingEntry } from "../uploads/queue.js";
-import { canRecord, pickFormat } from "./format.js";
-import { createMeter } from "./meter.js";
+import { addPart, dropScribe, getRecordingEntry, requestFinish, saveRecordingEntry } from "../uploads/queue.js";
 import { holdRecordingLock } from "./recovery.js";
-import { limitAction, partIsDue } from "./timing.js";
-
-const CHUNK_MS = 5000;
-const BITRATE = 32000;
+import { limitAction } from "./timing.js";
+import { createWebCapture } from "./web-capture.js";
 
 const listeners = new Set();
 
@@ -26,9 +25,11 @@ const state = {
   creditSecondsLeft: null,
   error: "",
   notice: "",
+  pauseReason: "", // why the recording paused (see capture-rules.js)
 };
 
-let session = null; // live objects for the current recording
+let session = null; // the capture and timers of the current recording
+let storing = Promise.resolve();
 
 function emit() {
   for (const listener of listeners) {
@@ -61,112 +62,67 @@ export function isRecording() {
 
 // Seconds of sound recorded so far (pauses are not counted).
 export function elapsedSeconds() {
-  if (!session) return 0;
-  const live = state.phase === "recording" && session.resumedAt ? performance.now() - session.resumedAt : 0;
-  return (session.activeMs + live) / 1000;
+  return session ? session.capture.elapsedMs() / 1000 : 0;
 }
 
 export function level() {
-  return session?.meter && state.phase === "recording" ? session.meter.level() : 0;
+  return session && state.phase === "recording" ? session.capture.level() : 0;
 }
 
-async function requestWakeLock() {
-  try {
-    if (session && "wakeLock" in navigator && document.visibilityState === "visible") {
-      session.wakeLock = await navigator.wakeLock.request("screen");
-    }
-  } catch {
-    // Not available on every device; recording still works.
-  }
+function newCapture() {
+  return appHooks.createCapture?.() ?? createWebCapture();
 }
 
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && (state.phase === "recording" || state.phase === "paused")) requestWakeLock();
-});
+const saveChunk = (chunk) => idb.put("chunks", chunk).catch(() => {});
 
-function micError(error) {
-  const name = error?.name ?? "";
-  if (name === "NotAllowedError" || name === "SecurityError") {
-    return "Microphone access is blocked. Allow the microphone for this site in your browser settings, then try again.";
-  }
-  if (name === "NotFoundError" || name === "OverconstrainedError") return "No microphone was found. Connect one and try again.";
-  if (name === "NotReadableError") return "The microphone is being used by another app. Close it and try again.";
-  return "The microphone could not be started. Please try again.";
+// Hands a finished part to the upload queue and counts it for its recording.
+// One part at a time, so the count is never lost.
+function storePart(part) {
+  const step = storing.then(async () => {
+    await addPart(part);
+    const entry = await getRecordingEntry(part.scribeId);
+    if (entry) await saveRecordingEntry({ ...entry, partsStored: (entry.partsStored ?? 0) + 1 });
+  });
+  storing = step.catch(() => {});
+  return step;
 }
 
-function startPart() {
-  const part = {
-    seq: session.nextSeq++,
-    chunks: [],
-    index: 0,
-    activeMs: 0,
-    resumedAt: performance.now(),
-    discard: false,
-    done: null,
+function isRefusal(notice) {
+  return typeof notice === "string" && notice.startsWith("resume_");
+}
+
+// What a capture says happened by itself.
+const events = {
+  onPaused(reason) {
+    if (session && state.phase === "recording") set({ phase: "paused", pauseReason: reason });
+  },
+  // Resume pressed in the Android notification.
+  onResumed() {
+    if (session && state.phase === "paused") set({ phase: "recording", pauseReason: "", notice: isRefusal(state.notice) ? "" : state.notice });
+  },
+  // The recording ended on the phone: the limit was reached, or it could not carry on.
+  onEnded(why) {
+    if (!session || (state.phase !== "recording" && state.phase !== "paused")) return;
+    if (why === "limit") set({ notice: state.unlimited ? "max_reached" : "credit_reached" });
+    else set({ notice: "stopped_on_phone" });
+    finish();
+  },
+};
+
+function startSession(capture, userId, scribeId) {
+  session = {
+    capture,
+    userId,
+    warned: false,
+    resuming: false,
+    timer: setInterval(tick, 250),
+    releaseLock: holdRecordingLock(scribeId),
   };
-  part.done = new Promise((resolve) => (part.resolve = resolve));
-  const recorder = new MediaRecorder(session.stream, { mimeType: session.format.full, audioBitsPerSecond: BITRATE });
-  part.recorder = recorder;
-
-  recorder.ondataavailable = (event) => {
-    if (!event.data || event.data.size === 0 || part.discard) return;
-    part.chunks.push(event.data);
-    const chunk = {
-      scribeId: state.scribeId,
-      seq: part.seq,
-      index: part.index++,
-      blob: event.data,
-      userId: session.userId,
-      at: Date.now(),
-    };
-    idb.put("chunks", chunk).catch(() => {});
-  };
-
-  recorder.onstop = () => {
-    if (!part.discard && part.chunks.length > 0) {
-      const blob = new Blob(part.chunks, { type: session.format.base });
-      session.partsSaved += 1;
-      addPart({
-        scribeId: state.scribeId,
-        seq: part.seq,
-        blob,
-        duration: part.activeMs / 1000,
-        mime: session.format.base,
-        ext: session.format.ext,
-        prefix: session.prefix,
-        userId: session.userId,
-      }).finally(part.resolve);
-    } else {
-      part.resolve();
-    }
-  };
-
-  recorder.start(CHUNK_MS);
-  session.part = part;
-  return part;
-}
-
-function settlePartTime(part) {
-  if (part.resumedAt) {
-    part.activeMs += performance.now() - part.resumedAt;
-    part.resumedAt = null;
-  }
-}
-
-// Starts the next part when the current one is long enough. The new recorder
-// starts before the old one stops, so no speech is lost between parts.
-function rotateIfDue() {
-  const part = session.part;
-  const live = part.resumedAt ? performance.now() - part.resumedAt : 0;
-  if (!partIsDue((part.activeMs + live) / 1000, session.segmentSeconds)) return;
-  settlePartTime(part);
-  startPart();
-  if (part.recorder.state !== "inactive") part.recorder.stop();
 }
 
 function tick() {
   if (!session || state.phase !== "recording") return;
-  rotateIfDue();
+  session.capture.tick();
   const action = limitAction(elapsedSeconds(), state.maxSeconds, session.warned);
   if (action === "warn") {
     session.warned = true;
@@ -179,150 +135,178 @@ function tick() {
 
 export async function start({ userId, templateId, title }) {
   if (isRecording()) return;
-  if (!canRecord()) {
-    set({ phase: "error", error: "This browser cannot record audio. Use a recent version of Chrome, Edge, Firefox or Safari." });
-    return;
-  }
-  const format = pickFormat();
-  if (!format) {
-    set({ phase: "error", error: "This browser cannot record audio in a supported format. Use a recent version of Chrome, Edge, Firefox or Safari." });
-    return;
-  }
-  set({ phase: "preparing", error: "", notice: "", templateId, title });
+  set({ phase: "preparing", error: "", notice: "", pauseReason: "", templateId, title });
+  const capture = newCapture();
 
-  let stream;
+  let format;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true },
-    });
+    format = await capture.prepare();
   } catch (error) {
-    set({ phase: "error", error: micError(error) });
+    set({ phase: "error", error: error instanceof UserError ? error.message : "The microphone could not be started. Please try again." });
     return;
   }
 
   let info;
   try {
-    info = await startScribe({ templateId, title, mimeType: format.base });
+    info = await startScribe({ templateId, title, mimeType: format.mime });
   } catch (error) {
-    stream.getTracks().forEach((track) => track.stop());
+    capture.cancel();
     set({ phase: "error", error: messageOf(error) });
     return;
   }
 
-  session = {
-    userId,
-    stream,
-    format: { ...format, ext: info.extension ?? format.ext },
-    prefix: info.upload_prefix,
-    segmentSeconds: info.segment_seconds ?? 600,
-    nextSeq: 1,
-    partsSaved: 0,
-    activeMs: 0,
-    resumedAt: performance.now(),
-    meter: createMeter(stream),
-    wakeLock: null,
-    warned: false,
-    timer: null,
-    part: null,
-    releaseLock: holdRecordingLock(info.scribe_id),
-  };
-
-  await saveRecordingEntry({
+  const entry = {
     scribeId: info.scribe_id,
     userId,
     prefix: info.upload_prefix,
-    ext: session.format.ext,
-    mime: format.base,
+    ext: info.extension ?? format.ext,
+    mime: format.mime,
     title,
-    startedAt: Date.now(),
-    finishRequested: false,
-    segmentCount: null,
-  });
-
-  for (const track of stream.getAudioTracks()) {
-    track.addEventListener("ended", () => {
-      if (state.phase === "recording" || state.phase === "paused") {
-        set({ notice: "mic_ended" });
-        finish();
-      }
-    });
-  }
-
-  set({
-    phase: "recording",
-    scribeId: info.scribe_id,
+    templateId,
     maxSeconds: info.max_seconds,
     unlimited: Boolean(info.unlimited),
     creditSecondsLeft: info.credit_seconds_left,
+    segmentSeconds: info.segment_seconds ?? 600,
+    startedAt: Date.now(),
+    finishRequested: false,
+    segmentCount: null,
+    partsStored: 0,
+  };
+  await saveRecordingEntry(entry);
+
+  try {
+    await capture.begin({
+      ...events,
+      scribeId: entry.scribeId,
+      userId,
+      prefix: entry.prefix,
+      ext: entry.ext,
+      segmentSeconds: entry.segmentSeconds,
+      maxSeconds: entry.maxSeconds,
+      storePart,
+      saveChunk,
+    });
+  } catch (error) {
+    capture.cancel();
+    await dropScribe(entry.scribeId);
+    await discardScribe(entry.scribeId).catch(() => {});
+    set({ phase: "error", error: messageOf(error) });
+    return;
+  }
+
+  startSession(capture, userId, entry.scribeId);
+  set({
+    phase: "recording",
+    scribeId: entry.scribeId,
+    maxSeconds: entry.maxSeconds,
+    unlimited: entry.unlimited,
+    creditSecondsLeft: entry.creditSecondsLeft,
   });
-  startPart();
-  session.timer = setInterval(tick, 250);
-  requestWakeLock();
 }
 
-export function pause() {
+/**
+ * In the Android app a recording carries on after the page was closed. At start
+ * the page takes it up again: it shows the recording, saves the parts recorded
+ * meanwhile, and finishes it when it ended while the page was closed.
+ */
+export async function attach(userId) {
+  if (session || isRecording() || !appHooks.findPhoneRecording) return;
+  let live;
+  try {
+    live = await appHooks.findPhoneRecording();
+  } catch {
+    return;
+  }
+  if (!live?.scribeId) return;
+  const entry = await getRecordingEntry(live.scribeId);
+  const capture = newCapture();
+  if (!entry || entry.userId !== userId) {
+    // Someone else's recording: stop it, and keep its audio for them.
+    await capture.stopLeftover?.();
+    return;
+  }
+  startSession(capture, userId, entry.scribeId);
+  set({
+    phase: live.phase === "recording" ? "recording" : "paused",
+    scribeId: entry.scribeId,
+    title: entry.title ?? "",
+    templateId: entry.templateId ?? null,
+    maxSeconds: entry.maxSeconds ?? 0,
+    unlimited: Boolean(entry.unlimited),
+    creditSecondsLeft: entry.creditSecondsLeft ?? null,
+    pauseReason: live.phase === "paused" ? live.reason ?? "" : "",
+    error: "",
+    notice: "",
+  });
+  await capture.attach(live, { ...events, scribeId: entry.scribeId, userId, prefix: entry.prefix, storePart });
+  if (live.phase !== "recording" && live.phase !== "paused") events.onEnded(live.limitReached ? "limit" : "stopped");
+}
+
+export function pause(reason = "user") {
   if (!session || state.phase !== "recording") return;
-  const part = session.part;
-  if (part.recorder.state === "recording") part.recorder.pause();
-  settlePartTime(part);
-  session.activeMs += performance.now() - session.resumedAt;
-  session.resumedAt = null;
-  set({ phase: "paused" });
+  session.capture.pause(reason);
+  set({ phase: "paused", pauseReason: reason });
 }
 
-export function resume() {
-  if (!session || state.phase !== "paused") return;
-  const part = session.part;
-  if (part.recorder.state === "paused") part.recorder.resume();
-  part.resumedAt = performance.now();
-  session.resumedAt = performance.now();
-  set({ phase: "recording" });
+export async function resume() {
+  if (!session || state.phase !== "paused" || session.resuming) return;
+  const current = session;
+  current.resuming = true;
+  let refused;
+  try {
+    refused = await current.capture.resume();
+  } catch {
+    refused = "mic";
+  } finally {
+    current.resuming = false;
+  }
+  if (session !== current || state.phase !== "paused") return;
+  if (refused) {
+    set({ notice: `resume_${refused}`, pauseReason: refused === "in_call" ? "call" : state.pauseReason });
+    return;
+  }
+  set({ phase: "recording", pauseReason: "", notice: isRefusal(state.notice) ? "" : state.notice });
 }
 
 function release() {
   if (!session) return;
   session.releaseLock();
   clearInterval(session.timer);
-  session.stream.getTracks().forEach((track) => track.stop());
-  session.meter.close();
-  session.wakeLock?.release?.().catch?.(() => {});
 }
 
 export async function finish() {
   if (!session || (state.phase !== "recording" && state.phase !== "paused")) return;
-  const part = session.part;
-  if (state.phase === "recording") {
-    settlePartTime(part);
-    session.activeMs += performance.now() - session.resumedAt;
-    session.resumedAt = null;
-  }
+  const { capture } = session;
   set({ phase: "finishing" });
-  if (part.recorder.state !== "inactive") part.recorder.stop();
-  await part.done;
+  try {
+    await capture.finish();
+  } catch {
+    // Whatever was handed on is still saved below.
+  }
+  await storing;
   const scribeId = state.scribeId;
-  const parts = session.partsSaved;
   release();
+  const parts = (await getRecordingEntry(scribeId))?.partsStored ?? 0;
   if (parts === 0) {
     session = null;
     await dropScribe(scribeId);
     await discardScribe(scribeId).catch(() => {});
-    set({ phase: "error", scribeId: null, error: "Nothing was recorded. Check the microphone and try again." });
+    set({ phase: "error", scribeId: null, pauseReason: "", error: "Nothing was recorded. Check the microphone and try again." });
     return;
   }
   await requestFinish(scribeId, parts);
   session = null;
-  set({ phase: "done" });
+  set({ phase: "done", pauseReason: "" });
 }
 
 export async function discard() {
   if (!session) return;
   const scribeId = state.scribeId;
-  const part = session.part;
-  part.discard = true;
-  if (part.recorder.state !== "inactive") part.recorder.stop();
+  const { capture } = session;
   release();
   session = null;
-  set({ phase: "idle", scribeId: null, notice: "" });
+  set({ phase: "idle", scribeId: null, notice: "", pauseReason: "" });
+  await capture.discard();
   await dropScribe(scribeId);
   try {
     await discardScribe(scribeId);
@@ -331,12 +315,32 @@ export async function discard() {
   }
 }
 
+/** Ends a recording on this device and keeps nothing (signing out anyway). */
+export async function abandon() {
+  if (!session) return;
+  const { capture } = session;
+  release();
+  session = null;
+  set({ phase: "idle", scribeId: null, notice: "", pauseReason: "", title: "", templateId: null });
+  await capture.discard();
+}
+
 // Back to the start screen after a recording was handed over.
 export function reset() {
   if (isRecording()) return;
-  set({ phase: "idle", scribeId: null, error: "", notice: "", title: "", templateId: null });
+  set({ phase: "idle", scribeId: null, error: "", notice: "", pauseReason: "", title: "", templateId: null });
 }
 
 export function clearNotice() {
   set({ notice: "" });
 }
+
+// Sound played by Clinical Scribe itself would be recorded too, so the recording
+// pauses while an audio or video element plays.
+document.addEventListener(
+  "play",
+  (event) => {
+    if (state.phase === "recording" && event.target instanceof HTMLMediaElement) pause("media");
+  },
+  true,
+);

@@ -4,7 +4,7 @@ import { currentSession, loadContext, loadPublicConfig, onSessionChange, signOut
 import { h } from "../lib/dom.js";
 import { messageOf } from "../lib/errors.js";
 import { startIdleTimer } from "../lib/idle.js";
-import { isRecording } from "../lib/recorder/recorder.js";
+import { abandon, attach, isRecording } from "../lib/recorder/recorder.js";
 import { recoverInterrupted } from "../lib/recorder/recovery.js";
 import { store } from "../lib/store.js";
 import { forgetUser } from "../lib/uploads/idb.js";
@@ -50,6 +50,8 @@ async function doSignOut(reason = "signed_out") {
   const userId = store.get().context?.profile?.id;
   if (reason) sessionStorage.setItem("cs-signout-reason", reason);
   leaveApp();
+  // A recording must not carry on for someone who signed out.
+  await abandon();
   if (userId) await forgetUser(userId);
   store.set({ session: null, context: null });
   await signOut();
@@ -119,6 +121,8 @@ async function enterApp(session) {
 
     inApp = true;
     queue.start(context.profile.id);
+    // In the Android app a recording may still be running from before.
+    await attach(context.profile.id);
     const interrupted = await recoverInterrupted(context.profile.id);
     store.set({ interrupted });
     shell = mountFrame(root, { onSignOut: requestSignOut });

@@ -11,6 +11,7 @@ import { messageOf } from "../../lib/errors.js";
 import { clock, minutes, timeOnly } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
 import { appHooks } from "../../lib/platform/hooks.js";
+import { pausedMessage, refusedMessage } from "../../lib/recorder/capture-rules.js";
 import * as recorder from "../../lib/recorder/recorder.js";
 import { isAdmin, profile, store } from "../../lib/store.js";
 import { dropScribe, requestFinish } from "../../lib/uploads/queue.js";
@@ -25,8 +26,12 @@ const NOTICES = {
   near_max: { kind: "warn", text: "About 2 minutes are left before the longest allowed recording. It will finish by itself." },
   credit_reached: { kind: "info", text: "Your transcription minutes ran out, so the recording was finished." },
   max_reached: { kind: "info", text: "The longest allowed recording was reached, so the recording was finished." },
-  mic_ended: { kind: "info", text: "The microphone stopped, so the recording was finished." },
+  stopped_on_phone: { kind: "info", text: "The recording stopped on the phone. What was recorded is being saved." },
+  resume_in_call: { kind: "warn", text: refusedMessage("in_call") },
+  resume_mic: { kind: "warn", text: refusedMessage("mic") },
 };
+// Notices that only matter while recording.
+const WHILE_RECORDING = new Set(["near_credit", "near_max", "resume_in_call", "resume_mic"]);
 
 function lastTemplateKey() {
   return `cs-last-template-${profile()?.id ?? ""}`;
@@ -142,7 +147,7 @@ export async function renderRecord(container, route) {
     if (state.phase === "done" && state.scribeId) setCurrentScribe(state.scribeId);
     const showProgress = !recorder.isRecording() && state.phase !== "error" && (state.phase === "done" || currentScribe());
     if (showProgress && currentScribe()) {
-      const notice = state.notice && NOTICES[state.notice] && !["near_credit", "near_max"].includes(state.notice) ? NOTICES[state.notice] : null;
+      const notice = state.notice && NOTICES[state.notice] && !WHILE_RECORDING.has(state.notice) ? NOTICES[state.notice] : null;
       cleanupStage = renderProgress(stage, currentScribe(), {
         templates,
         notice,
@@ -256,6 +261,9 @@ function drawRecording(stage, state, templates) {
 
   const templateName = templates.find((t) => t.id === state.templateId)?.name ?? "No template";
   const notice = state.notice && NOTICES[state.notice] ? banner({ kind: NOTICES[state.notice].kind, text: NOTICES[state.notice].text }) : null;
+  // Why the recording paused by itself (a call, other sound, a locked screen).
+  const why = paused ? pausedMessage(state.pauseReason) : null;
+  const pausedNote = why ? banner({ kind: "warn", text: why }) : null;
 
   const pauseButton = button(paused ? "Resume" : "Pause", { icon: paused ? "play" : "pause", size: "large", disabled: finishing });
   pauseButton.addEventListener("click", () => (paused ? recorder.resume() : recorder.pause()));
@@ -289,7 +297,7 @@ function drawRecording(stage, state, templates) {
     h("p", { class: "record-hint", text: "Keep this screen open. Your audio is saved as you go." }),
   );
   const extras = appHooks.recorderExtras?.(card, { phase: state.phase });
-  replace(stage, h("div", { class: "stack" }, notice, card));
+  replace(stage, h("div", { class: "stack" }, pausedNote, notice, card));
 
   return () => {
     clearInterval(tick);

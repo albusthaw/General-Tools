@@ -1,12 +1,14 @@
 // Live sound level (0 to 1) from the microphone, for the level bars.
+const SILENT = { level: () => 0, wake() {}, close() {} };
+
 export function createMeter(stream) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return { level: () => 0, close() {} };
+  if (!AudioContextClass) return SILENT;
   let context;
   try {
     context = new AudioContextClass();
   } catch {
-    return { level: () => 0, close() {} };
+    return SILENT;
   }
   const source = context.createMediaStreamSource(stream);
   const analyser = context.createAnalyser();
@@ -28,6 +30,10 @@ export function createMeter(stream) {
       const value = Math.min(1, rms * 4.5);
       smooth = value > smooth ? value : smooth * 0.85 + value * 0.15;
       return smooth;
+    },
+    // A call or a locked phone can stop the meter; it starts again on Resume.
+    wake() {
+      if (context.state !== "running") context.resume().catch(() => {});
     },
     close() {
       try {
