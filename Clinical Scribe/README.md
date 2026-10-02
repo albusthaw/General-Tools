@@ -94,7 +94,7 @@ Clinical Scribe has two phone apps with every feature of the website, laid out f
 2. Tap **⋯**, then **Share**, then **Add to Home Screen**. Keep **Open as Web App** switched on and tap **Add**.
 3. Open Clinical Scribe from the Home Screen. It finds your clinic by itself: tap **Connect**, then sign in.
 
-iPhone stops a recording when the screen locks or another app opens, so keep the app open while you record; the app keeps the screen awake. Safari asks for the microphone again in each session. The web app updates itself.
+An iPhone does not let web apps use the microphone while the phone is locked or another app is open. To record with a dark screen, tap **Screen off** while recording: the screen turns black, taps do nothing, and the recording carries on. Press and hold the screen to come back. If you allow motion when asked, laying the phone face down does the same. If the phone locks anyway, the recording pauses and keeps everything; tap **Resume** when you are back. Safari asks for the microphone again in each session. The web app updates itself.
 
 ### Android
 
@@ -103,9 +103,13 @@ iPhone stops a recording when the screen locks or another app opens, so keep the
 3. Open the downloaded file and tap **Install**. If the phone asks, allow installs from the browser.
 4. Open Clinical Scribe, enter the server link (or tap **Open the app** on the website, which fills it in), tap **Connect** and sign in.
 
-The Android app keeps recording when the screen is off or another app is open. A notification shows the time with **Pause** and **Resume**; it never shows the recording label. When a newer app is published, the app says so and offers the download.
+The Android app keeps recording when the screen is off, another app is open, or the app is swiped away. A notification shows the time with **Pause** and **Resume**; it never shows the recording label. When a newer app is published, the app says so and offers the download.
 
 The app is installed from your website, not from Google Play. From 30 September 2026, phones in Brazil, Indonesia, Singapore and Thailand install such apps only from developers verified by Google, and more countries follow in 2027. If your clinic is in one of these countries, register as an Android developer with Google before you share the app.
+
+### Calls and other sound
+
+A recording never ends by itself, in the apps or on the website. A phone call, music or video from another app, an alarm, or a microphone that stops makes the recording pause. Everything recorded so far is kept, the recorder says why it paused, and **Resume** carries on when you are ready. During a call, Resume waits until the call has ended. Only **Finish** and **Discard** end a recording.
 
 ### Build the Android app
 
@@ -211,7 +215,9 @@ The full security design is in `project.md` (section 7).
 | The phone app says "No Clinical Scribe server was found at that link" | Use the server link shown in **Admin settings → Phone apps**, or the Supabase project address `https://<code>.supabase.co`. |
 | The phone app says the server "needs an update" | Run **Deploy Clinical Scribe** to bring the server up to date. |
 | Android says "App not installed" when updating | The new copy was signed with another key. Remove the old app first, then install. Set up the signing key ([Build the Android app](#build-the-android-app)) so this does not happen again. |
-| The iPhone recording stopped | iPhone stops recordings when the screen locks or another app opens. Keep the app open while recording. |
+| The recording paused by itself | A call, sound from another app or a microphone problem paused it, and the recorder says which. Tap **Resume** when you are ready; nothing recorded is lost. |
+| The iPhone recording paused when the screen locked | iPhone pauses a web app's recording when the phone locks or another app opens. Use **Screen off** to record with a dark screen. If the phone still locks, turn off Low Power Mode and set **Auto-Lock** to **Never** in Settings. |
+| The Android recording stops after the screen has been off for a while | Some phones close apps to save battery. In the phone's **Settings → Apps → Clinical Scribe → Battery**, choose **Unrestricted** (the words differ a little between phone makers). |
 | No admin is left | In the Supabase **SQL Editor**, run `update public.profiles set role = 'admin', status = 'active' where email = 'you@example.org';` with your own email address. |
 
 ## 9. For maintainers
@@ -262,6 +268,14 @@ The workflow **Test Clinical Scribe** runs the same tests on GitHub whenever thi
 5. Tag the release as `cscribe-v<version>`, for example `cscribe-v1.1.0`.
 
 ## Changes
+
+### 1.3.0
+
+- A recording never ends by itself any more: a phone call, sound from another app, a locked iPhone or a microphone that stops pauses it, and the recorder says why. **Resume** carries on.
+- Android: the app now records by itself, so recording carries on with the screen off, in other apps and after the app is swiped away. The time limit is kept with the screen off too.
+- iPhone: the new **Screen off** button keeps recording with a black, touch-locked screen. Laying the phone face down does the same once motion is allowed.
+- Sound played in Clinical Scribe pauses the recording, so it is not recorded.
+- Signing out now also ends a recording on that device.
 
 ### 1.2.0
 

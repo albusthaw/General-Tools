@@ -105,8 +105,19 @@ The recorder fills the screen, so it is easy to use with one hand and readable f
 - At the top: red dot and **Recording** (or **Paused**), then the template name and label.
 - In the middle: the timer in large tabular digits (56 px). Around the central control, a **sound ring** grows and shrinks with the voice level, so people can see the phone is listening. When paused, the ring turns grey and still.
 - The central circle (96 px) is **Pause** (or **Resume**). Below it, a wide primary capsule **Finish**. Below that, the quiet **Discard** text button, which always asks for confirmation.
-- Android: "Recording carries on when the screen is off." under the controls, and a recording notification with **Pause** or **Resume** (section 7.2).
-- iPhone: "Keep Clinical Scribe open while recording." The screen is kept awake.
+- Android: "Recording carries on when the screen is off." under the controls, and a recording notification with **Pause** or **Resume** (section 7.2). The screen may turn off as usual.
+- iPhone: a **Screen off** button (moon) next to **Discard**. It turns the screen black and locks touches while the recording carries on. Only a dim red dot with "Recording 12:34" is shown, and it moves to a new place every minute; "Press and hold to show Clinical Scribe" shows for a few seconds, and again on any touch. A press and hold of about a second shows the app, with a ring that fills while holding. If the phone cannot be kept from locking (older iOS, Low Power Mode), the dark screen says so in dim text: "This iPhone may lock by itself and pause the recording. To stop that, turn off Low Power Mode and set Auto-Lock to Never in Settings." Laying the phone face down does the same as the button once motion access is allowed (asked the first time Screen off is tapped). Screen off ends by itself when the recording pauses or finishes. Under the controls: "Use Screen off to keep recording with a dark screen." (with "or lay the phone face down" once that works). Android browsers get the same button.
+- **Paused by itself:** a call, other sound, a lost microphone or a locked iPhone pause the recording and never end it. A calm banner above the recorder says why, and the Resume circle is ready:
+  - "Paused for a phone call. Tap Resume when you are ready."
+  - "Paused because another app played sound. Tap Resume to carry on."
+  - "Paused because the microphone was needed elsewhere, for example for a call. Tap Resume to carry on." (iPhone and browsers, where the reason is not known)
+  - "Paused because the screen locked or another app opened. Tap Resume to carry on." (iPhone)
+  - "Paused while sound played in Clinical Scribe. Tap Resume to carry on."
+  - "The microphone stopped. Tap Resume to try again."
+  - "Another app is using the microphone. Tap Resume to try again."
+  - Resume during a call: "You can resume when the call has ended." If the microphone cannot start again: "The microphone could not start again. If a call is going on, try again when it has ended."
+  - A recording that ended on the phone while the app was closed (for example at the time limit) is saved as usual, with a short note saying so.
+  The Android notification shows the reason in short: "Paused for a call · 4:05" and "Tap Resume when the call has ended".
 - Motion: on press, Pause and Finish change shape on Android (round to rounded square and back) and scale with a spring on iPhone. Starting, pausing, resuming and finishing each give a short vibration on Android.
 
 ### 5.5 Scribe: processing and note
