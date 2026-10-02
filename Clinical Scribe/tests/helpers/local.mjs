@@ -22,6 +22,8 @@ export function localStack() {
     dbUrl: data.DB_URL,
     publishableKey: data.PUBLISHABLE_KEY ?? data.ANON_KEY,
     secretKey: data.SECRET_KEY ?? data.SERVICE_ROLE_KEY,
+    anonKey: data.ANON_KEY,
+    serviceRoleKey: data.SERVICE_ROLE_KEY,
   };
   return cached;
 }

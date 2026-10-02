@@ -1,0 +1,115 @@
+name: Deploy Clinical Scribe
+
+# One-click set-up and upgrade of Clinical Scribe on your own Supabase project:
+# the database, server functions, sign-in settings, the first admin and the web
+# app. Start it from the Actions tab (Deploy Clinical Scribe → Run workflow).
+# Every step is safe to repeat, so running it again installs an upgrade. The
+# steps live in "Clinical Scribe/build/deploy"; "Clinical Scribe/README.md" lists
+# the repository secrets it reads. Workflow logs can be public, so the deploy
+# script never prints a secret and hides every key it reads.
+on:
+  workflow_dispatch:
+    inputs:
+      app_address:
+        description: "Web address of the app, only if you host it yourself. Leave empty to publish it on GitHub Pages."
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-clinical-scribe
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Set up Supabase and build the app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: write
+    outputs:
+      use_pages: ${{ steps.where.outputs.use_pages }}
+    defaults:
+      run:
+        working-directory: Clinical Scribe
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Choose where the app will live
+        id: where
+        env:
+          APP_ADDRESS: ${{ inputs.app_address }}
+        run: |
+          if [ -z "$APP_ADDRESS" ]; then
+            echo "use_pages=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "use_pages=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Fails with a clear message when Pages is not set to "GitHub Actions" yet.
+      - name: Read the GitHub Pages address
+        id: pages
+        if: steps.where.outputs.use_pages == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Clinical Scribe/web/package-lock.json
+
+      - name: Set up the Supabase command-line tool
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.119.0
+
+      - name: Run the quick checks
+        run: node --test tests/unit/*.test.mjs
+
+      - name: Deploy
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          CLINICAL_SCRIBE_ADMIN_EMAIL: ${{ secrets.CLINICAL_SCRIBE_ADMIN_EMAIL }}
+          CLINICAL_SCRIBE_ADMIN_PASSWORD: ${{ secrets.CLINICAL_SCRIBE_ADMIN_PASSWORD }}
+          APP_URL: ${{ inputs.app_address || steps.pages.outputs.base_url }}
+        run: node build/deploy/deploy.mjs all
+
+      - name: Package the app for GitHub Pages
+        if: steps.where.outputs.use_pages == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: Clinical Scribe/web/dist
+
+      - name: Keep the built app for your own web host
+        if: steps.where.outputs.use_pages != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clinical-scribe-web-app
+          path: Clinical Scribe/web/dist
+          if-no-files-found: error
+
+  publish:
+    name: Publish the app on GitHub Pages
+    needs: deploy
+    if: needs.deploy.outputs.use_pages == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - name: Publish
+        id: publish
+        uses: actions/deploy-pages@v4

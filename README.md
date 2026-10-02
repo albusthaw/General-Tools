@@ -1,6 +1,6 @@
 # General Tools
 
-A growing collection of small, practical desktop tools. Each tool lives in its own folder with its own README, source code and a `Release` folder for the built program. Shared working rules for the whole repository live in the `Global instruction` folder.
+A growing collection of small, practical tools. Each tool lives in its own folder with its own README, source code and a `Release` folder for the built program. Shared working rules for the whole repository live in the `Global instruction` folder.
 
 ## Tools
 
@@ -8,6 +8,7 @@ A growing collection of small, practical desktop tools. Each tool lives in its o
 | --- | --- | --- |
 | YouTube Bulk Publisher | `YT Bulk Publish/` | Publish, rename and update many YouTube Studio videos in one go. |
 | N8N Automation imports | `N8N Automation imports/` | Importable n8n workflows, starting with a clinical decision helper that reads clinical images and emails a report. |
+| Clinical Scribe | `Clinical Scribe/` | Records consultations and writes clinical notes from a chosen template, on your own Supabase project. One-click deploy and upgrade. |
 
 More tools will be added over time.
 
@@ -27,12 +28,20 @@ The interface uses a white frosted-glass look and plain language throughout. The
 
 See `YT Bulk Publish/README.md` for setup, building and known limits.
 
+## Clinical Scribe
+
+A web app for clinicians. It records a consultation, turns the speech into a transcript with ElevenLabs or Gemini, and writes a clinical note with Gemini or DeepSeek in the format the clinician chooses (SOAP note by default, or templates made with AI help). Processing carries on in the background even if the browser is closed. Admins manage people, transcription minutes, AI keys and models; every look at someone else's records is logged with a reason.
+
+It runs on your own Supabase project. The GitHub workflow "Deploy Clinical Scribe" sets up the database, server functions, sign-in settings, the first admin and the web app in one run, and the same run installs upgrades. See `Clinical Scribe/README.md` for the step-by-step guide.
+
 ## Repository layout
 
 ```
 General-Tools/
 ├── CLAUDE.md                 short pointer to the Global instruction folder
 ├── Global instruction/       working rules: claude.md, agent.md, design.md, release.md, version control.md
-├── YT Bulk Publish/          the first tool
-└── N8N Automation imports/   importable n8n workflow files
+├── .github/workflows/        builds, tests and the Clinical Scribe deploy
+├── YT Bulk Publish/          Windows tool for YouTube Studio
+├── N8N Automation imports/   importable n8n workflow files
+└── Clinical Scribe/          clinical note web app on Supabase
 ```

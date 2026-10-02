@@ -1,9 +1,9 @@
 # Supabase settings for Clinical Scribe.
 #
 # Most of this file only affects the local development stack (`supabase start`).
-# On a hosted project, the deploy script reads the [functions.*] sections when it
-# deploys the Edge Functions; sign-in settings for the hosted project are applied
-# by build/deploy.sh through the Management API, not from this file.
+# On a hosted project, the deploy reads the [functions.*] sections when it deploys
+# the Edge Functions; sign-in settings for the hosted project are applied by
+# build/deploy/deploy.mjs through the Management API, not from this file.
 
 project_id = "clinical-scribe"
 

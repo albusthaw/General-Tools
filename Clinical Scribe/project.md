@@ -83,7 +83,7 @@ There are two roles:
 ```
 
 ### 3.1 Why the web app is hosted outside Supabase
-Supabase does not serve web pages from its default address: Edge Functions rewrite `text/html` responses to `text/plain` unless a custom domain is used. The web app is therefore a static site. The deploy workflow publishes it to GitHub Pages (free for this public repository). Any static host works (a Vercel button is also provided). The web app holds only the project address and the publishable key, which are public by design; all protection is on the server.
+Supabase does not serve web pages from its default address: Edge Functions rewrite `text/html` responses to `text/plain` unless a custom domain is used. The web app is therefore a static site. The deploy workflow publishes it to GitHub Pages (free for this public repository). Any static host works; the README explains Vercel, Netlify and Cloudflare Pages, and `web/vercel.json` and `web/public/_headers` add security headers on hosts that support them. The web app holds only the project address and the publishable key, which are public by design; all protection is on the server.
 
 ### 3.2 Parts and responsibilities
 
@@ -202,13 +202,14 @@ Clinical Scribe/
 ├── project.md             this plan
 ├── design.md              look and wording rules
 ├── VERSION                app version (major.minor.patch)
-├── build/                 deploy recipe used by the workflow and by hand
+├── build/
+│   ├── deploy/            deploy and upgrade script, used by the workflow and by hand
+│   └── make-icons.mjs     draws the app icons
 ├── Release/               README.txt only: this tool is published, not built into a file
 ├── supabase/
 │   ├── config.toml        local development settings
 │   ├── migrations/        one file per area, applied in order
 │   ├── seed.sql           local development only
-│   ├── tests/             database tests (pgTAP)
 │   └── functions/
 │       ├── _shared/       auth, http, validation, errors, vault, providers, prompts
 │       ├── worker/        job runner, one module per job type
@@ -223,8 +224,13 @@ Clinical Scribe/
 │       ├── views/         one module per screen (sign-in, scribe, templates, history, each admin page)
 │       └── styles/        tokens, base, layout, components, one file per screen group
 └── tests/
-    ├── mock-ai/           stand-in AI services for end-to-end tests
-    └── e2e/               browser tests (desktop and phone widths)
+    ├── unit/              web app rules and deploy helpers (Node test runner)
+    ├── functions/         server function helpers (Deno)
+    ├── api/               server tests against a local stack
+    ├── deploy/            the deploy script against a local stack
+    ├── e2e/               browser tests (desktop and phone widths)
+    ├── mock-ai/           stand-in AI services and Management API
+    └── run-local.sh       runs everything
 ```
 
 Each module has one job. Screens talk to the server only through `lib/api/*.js`. Edge Function entry files only route; the work lives in handler modules.
@@ -234,28 +240,33 @@ Each module has one job. Screens talk to the server only through `lib/api/*.js`.
 ### 9.1 First deployment
 1. Create a Supabase project.
 2. In GitHub: add three repository secrets (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`), optionally `CLINICAL_SCRIBE_ADMIN_EMAIL` and `CLINICAL_SCRIBE_ADMIN_PASSWORD`, and set Pages to "GitHub Actions".
-3. Run the workflow **Deploy Clinical Scribe** (one click). It:
+3. Run the workflow **Deploy Clinical Scribe** (one click). It runs the unit tests, then `build/deploy/deploy.mjs`, which:
+   - checks the token and the project (waits while a new project starts, stops at once for a paused one) and reads the API keys, hiding them in the log;
+   - builds the web app with the project address and publishable key, and refuses to continue if any secret is found in the built files, so a failed build stops before the server is changed;
+   - applies sign-in settings through the Management API before anything else on the server, so nobody can sign up on a new project during the deploy: sign-up off, email sign-in on, the password rule, the site address and the redirect list (addresses already listed and stricter rules are kept);
    - links the project and applies database migrations (`supabase db push`);
-   - deploys the three Edge Functions with JWT verification off;
-   - records the functions address for the worker;
-   - sets sign-in settings through the Management API: sign-up off, site address and redirect list;
-   - creates the first admin when the optional secrets are present;
-   - builds the web app with the project address and publishable key and publishes it to GitHub Pages;
-   - prints the app address.
+   - deploys the three Edge Functions with JWT verification off, bundled on Supabase's side (no Docker needed);
+   - saves the function settings (project reference and the one web address allowed to call the functions);
+   - records the functions address for the worker and the version now running;
+   - creates the first admin when the optional secrets are present and the project has no accounts yet;
+   - writes a short report on the run page.
+   The workflow then publishes the web app to GitHub Pages. With an app address given instead, it skips Pages and keeps the built app as a download.
 4. Without the optional admin secrets: add a user in Supabase (Authentication → Users → Add user). The first account in the project becomes the admin automatically.
 
 ### 9.2 Upgrades
 - Database changes are new, numbered migration files; `supabase db push` applies only the ones not yet applied, so data stays.
 - To upgrade: bring the new code into the repository (pull or sync), then run the same workflow again. Every step is safe to repeat.
-- `VERSION` is shown in the app. The database records the version of its newest migration, and admins see a notice when the app and the server versions differ.
-- The same steps run by hand from a terminal with `build/deploy.sh`.
+- `VERSION` is shown in the app. Each deploy records it on the server (`svc_set_server_version`), each change of version is written to the audit log, and admins see a notice when the app and the server versions differ.
+- The same steps run by hand from a terminal with `node build/deploy/deploy.mjs` (parts: `check`, `server`, `web`).
 
 ## 10. Testing plan
-- **Database tests** (pgTAP, `supabase test db`): RLS for every table, admin review logging, audit immutability, credit charge and refund, job claiming, storage policies, last-admin protection.
-- **Function tests** (Deno): provider response parsing, transcript building from word labels, prompt assembly and marker neutralising, input validation, error mapping, key masking.
-- **Web unit tests** (Node test runner): formatting, CSV export escaping, recorder part timing, upload queue retry rules.
-- **End to end** on a local Supabase stack (`supabase start`) with stand-in AI services: sign-in, recording with Chromium's fake microphone, pause and resume, upload, background processing with the page closed, note writing, history, another note, template builder, admin pages, record review logging, audit log, at phone and desktop widths, with screenshots.
-- **Security checks**: Supabase security advisor, a scan of the built web app for keys, attempts to read other people's data with a user token, attempts to write the audit log.
+`tests/run-local.sh` runs every group below; the workflow **Test Clinical Scribe** runs it on GitHub whenever the tool changes.
+- **Unit tests** (Node test runner, `tests/unit`): formatting, CSV export escaping, recorder part timing, upload queue retry rules, audit wording, and the deploy helpers (settings checks, key choice, sign-in settings merge, leak check).
+- **Server function checks** (Deno, `tests/functions`): type check and lint of every function, prompt assembly and marker neutralising, template answer parsing, note clean-up, transcript building from word labels, error sorting and retry rules, key hiding.
+- **Server tests** (`tests/api`, local Supabase stack with stand-in AI services): first admin, waiting accounts, keys never returned, recording and background processing with both transcription services, notes with both note services, template helper, finished notes final, retries and credit refund, privacy between people (tables and storage), audit log immutability, logged record review, credit, roles, suspension, removal, last-admin protection, Google sign-in settings, email stub, worker secret.
+- **Deploy tests** (`tests/deploy`): the real deploy script against the local stack with a stand-in command-line tool and Management API: first deploy, a repeat deploy that keeps settings and records the upgrade, older keys, a failed step, a paused project, a wrong token, missing values, check mode, and that no secret is ever printed.
+- **End to end** (`tests/e2e`, Playwright): sign-in, recording with Chromium's fake microphone, pause and resume, parts, background processing with the page closed, crash recovery, note writing, history, another note, template builder, admin pages, record review logging, audit log and CSV, Google sign-in, email settings, at phone and desktop widths, with no console errors and no sideways scrolling.
+- **Security checks**: the deploy scans the built web app for keys and tokens before anything is published; the server tests try to read other people's data and to change the audit log with user tokens.
 
 ## 11. Known limits
 - iPhones stop recording when the screen locks or the browser moves to the background. The app keeps the screen awake and asks the user to keep the page open while recording. Audio already saved is never lost.

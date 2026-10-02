@@ -4,17 +4,33 @@
 //
 // Run: node tests/mock-ai/server.mjs [port]   (default 54399)
 // Test helpers: GET /__log, POST /__reset, POST /__fail {"match": "...", "status": 503, "times": 1}
+// Management API state for the deploy tests: GET or POST /__auth_config, POST /__project
+// {"status": "..."}, POST /__api_keys [...], GET /__secrets.
 
 import http from "node:http";
 
 const port = Number(process.argv[2] ?? process.env.MOCK_AI_PORT ?? 54399);
 const host = process.env.MOCK_AI_HOST ?? "0.0.0.0";
 
+const NEW_PROJECT_AUTH = {
+  site_url: "http://localhost:3000",
+  uri_allow_list: "",
+  disable_signup: false,
+  external_email_enabled: true,
+  password_min_length: 6,
+  password_required_characters: "",
+  external_google_enabled: false,
+  external_google_client_id: "",
+};
+
 let log = [];
 let failures = [];
 let interactions = new Map();
 let files = new Map();
-let authConfig = { site_url: "", uri_allow_list: "", external_google_enabled: false, external_google_client_id: "" };
+let authConfig = { ...NEW_PROJECT_AUTH };
+let projectStatus = "ACTIVE_HEALTHY";
+let apiKeys = [];
+let functionSecrets = {};
 let counter = 0;
 
 const VALID_KEYS = new Set(["test-gemini-key-0001", "test-elevenlabs-key-0001", "test-deepseek-key-0001", "sbp_test_management_token_0001"]);
@@ -168,13 +184,28 @@ async function handle(req, res) {
     failures = [];
     interactions = new Map();
     files = new Map();
+    authConfig = { ...NEW_PROJECT_AUTH };
+    projectStatus = "ACTIVE_HEALTHY";
+    functionSecrets = {};
     return send(res, 200, { ok: true });
   }
   if (path === "/__fail") {
     failures.push(JSON.parse(raw.toString() || "{}"));
     return send(res, 200, { ok: true });
   }
-  if (path === "/__auth_config") return send(res, 200, authConfig);
+  if (path === "/__auth_config") {
+    if (req.method === "POST") authConfig = { ...NEW_PROJECT_AUTH, ...JSON.parse(raw.toString() || "{}") };
+    return send(res, 200, authConfig);
+  }
+  if (path === "/__project") {
+    projectStatus = JSON.parse(raw.toString() || "{}").status ?? "ACTIVE_HEALTHY";
+    return send(res, 200, { ok: true });
+  }
+  if (path === "/__api_keys") {
+    apiKeys = JSON.parse(raw.toString() || "[]");
+    return send(res, 200, { ok: true });
+  }
+  if (path === "/__secrets") return send(res, 200, functionSecrets);
 
   const injected = takeFailure(path);
   if (injected) return send(res, injected.status ?? 503, { error: { message: injected.message ?? "Injected failure" } });
@@ -292,11 +323,27 @@ async function handle(req, res) {
     return res.end();
   }
 
-  // ---- Supabase Management API (auth config)
-  const projectMatch = path.match(/^\/v1\/projects\/([a-z0-9]{20})\/config\/auth$/);
+  // ---- Supabase Management API: project, API keys, function secrets, auth config
+  const projectMatch = path.match(/^\/v1\/projects\/([a-z]{20})(\/[a-z/-]+)?$/);
   if (projectMatch) {
-    if (req.method === "GET") return send(res, 200, authConfig);
-    if (req.method === "PATCH") {
+    const [, ref, rest = ""] = projectMatch;
+    if (rest === "" && req.method === "GET") {
+      return send(res, 200, { id: ref, ref, name: "Clinical Scribe test", status: projectStatus });
+    }
+    if (rest === "/api-keys" && req.method === "GET") {
+      const reveal = url.searchParams.get("reveal") === "true";
+      return send(res, 200, apiKeys.map((key) => (key.type === "secret" && !reveal ? { ...key, api_key: `${key.api_key.slice(0, 14)}••••••••` } : key)));
+    }
+    if (rest === "/secrets" && req.method === "POST") {
+      const list = JSON.parse(raw.toString() || "[]");
+      if (!Array.isArray(list) || list.some((item) => typeof item?.name !== "string" || typeof item?.value !== "string" || item.name.startsWith("SUPABASE_"))) {
+        return send(res, 400, { message: "Invalid secrets" });
+      }
+      for (const item of list) functionSecrets[item.name] = item.value;
+      return send(res, 201, "");
+    }
+    if (rest === "/config/auth" && req.method === "GET") return send(res, 200, authConfig);
+    if (rest === "/config/auth" && req.method === "PATCH") {
       authConfig = { ...authConfig, ...JSON.parse(raw.toString() || "{}") };
       return send(res, 200, authConfig);
     }
