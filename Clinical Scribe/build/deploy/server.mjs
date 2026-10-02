@@ -3,6 +3,7 @@
 import { runCli } from "./cli.mjs";
 import { sleep } from "./http.mjs";
 import { pickKeys } from "./management-api.mjs";
+import { riskyMigrations } from "./migrations.mjs";
 import { DeployError, done, endSection, info, mask, section, warn } from "./output.mjs";
 import { projectApi } from "./project-api.mjs";
 
@@ -69,6 +70,58 @@ export function signInPatch(current, app) {
   return patch;
 }
 
+// Kinds of records the deploy counts before and after it updates the database.
+const COUNTED = {
+  people: "people",
+  recordings: "recordings",
+  notes: "notes",
+  templates: "templates",
+  audit_entries: "audit log entries",
+  credit_entries: "minutes history entries",
+};
+
+/** Kinds of records that became fewer, with how many fewer. */
+export function compareCounts(before, after) {
+  const drops = [];
+  for (const [key, label] of Object.entries(COUNTED)) {
+    const was = Number(before?.[key]);
+    const now = Number(after?.[key]);
+    if (Number.isFinite(was) && Number.isFinite(now) && now < was) drops.push({ key, label, was, now, lost: was - now });
+  }
+  return drops;
+}
+
+// A few records can be deleted by people while the deploy runs; a whole table
+// emptied, more than a couple gone, or any audit entry gone is never normal.
+export function isSerious(drop) {
+  return drop.now === 0 || drop.lost > 2 || drop.key === "audit_entries";
+}
+
+function checkCounts(before, after) {
+  const drops = compareCounts(before, after);
+  const list = drops.map((drop) => `${drop.lost} ${drop.label}`).join(", ");
+  if (drops.some(isSerious)) {
+    throw new DeployError(
+      `Some records are missing after the database update (${list} fewer than before). Restore the latest backup in Supabase (Database → Backups) before anyone uses the app, and report this problem.`,
+    );
+  }
+  if (drops.length > 0) warn(`A few records were deleted while the deploy ran (${list}). This is normal if someone deleted them at the same time.`);
+  else done("All records are still there: people, recordings, notes, templates, minutes and the audit log.");
+}
+
+// Runs before the database is touched: no migration may drop or empty a table.
+export function checkDatabaseChanges(settings) {
+  section("Checking the database changes");
+  const risky = riskyMigrations(settings.root);
+  if (risky.length > 0) {
+    throw new DeployError(
+      `The update was stopped before anything changed: ${risky.map((found) => found.file).join(", ")} would remove stored records. Report this problem; do not edit the file yourself.`,
+    );
+  }
+  done("No database change removes stored records.");
+  endSection();
+}
+
 async function firstAdmin(settings, project) {
   if (!settings.admin) {
     info("No admin details were given, so no account was made.");
@@ -94,6 +147,13 @@ export async function deployServer(settings, api, keys) {
   done("Public sign-up is off: only people added by an admin can sign in.");
   if (settings.app) done(`After signing in, people return to ${settings.app.url}`);
   endSection();
+
+  checkDatabaseChanges(settings);
+
+  // Counted before any database change, so the deploy can prove nothing was lost.
+  // Servers older than 1.1.0 have no counting function yet.
+  const project = projectApi(settings, keys.secret);
+  const before = await project.optionalRpc("svc_data_summary");
 
   section("Connecting to the Supabase project");
   await runCli(settings, ["link", "--project-ref", settings.ref, "--yes"], "Connecting to the project");
@@ -123,8 +183,18 @@ export async function deployServer(settings, api, keys) {
   else warn("No app address was given, so pages from any address may call the server functions. Every call still needs a valid sign-in.");
   endSection();
 
+  section("Checking that every record is kept");
+  try {
+    const after = await project.rpc("svc_data_summary", {}, "count the records");
+    if (before) checkCounts(before, after);
+    else info("This server had no record count from before the update; from now on every update is checked.");
+  } catch (error) {
+    if (error instanceof DeployError && /Some records are missing/.test(error.message)) throw error;
+    warn("The records could not be counted after the update, so this check was skipped.");
+  }
+  endSection();
+
   section("Recording the version on the server");
-  const project = projectApi(settings, keys.secret);
   await project.rpc("svc_set_functions_url", { p_url: settings.functionsUrl }, "record the server functions address");
   await project.rpc("svc_set_server_version", { p_version: settings.version }, "record the version");
   done(`The server runs version ${settings.version}.`);

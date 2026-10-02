@@ -1,6 +1,8 @@
 // Stand-in for the Supabase command-line tool in the deploy tests. It writes down
 // how it was called and reports success, or fails on purpose when FAKE_CLI_FAIL
-// names the command (for example "functions").
+// names the command (for example "functions"). With FAKE_CLI_PUSH_SQL, "db push"
+// runs that SQL on the local database, to act out an update that loses records.
+import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -22,5 +24,8 @@ if (args[0] === "--version") {
   console.error(`The stand-in tool failed "${args.join(" ")}" on purpose.`);
   process.exit(1);
 } else {
+  if (args[0] === "db" && args[1] === "push" && process.env.FAKE_CLI_PUSH_SQL) {
+    execFileSync("psql", [process.env.FAKE_CLI_DB_URL, "-q", "-v", "ON_ERROR_STOP=1", "-c", process.env.FAKE_CLI_PUSH_SQL]);
+  }
   console.log(`Stand-in tool ran: supabase ${args.join(" ")}`);
 }

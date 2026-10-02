@@ -119,6 +119,7 @@ test("a first deploy sets up the server, the sign-in settings and the first admi
 
   assert.match(run.output, new RegExp(`^app_url=${APP.replace(/[.]/g, "\\.")}$`, "m"));
   assert.match(run.summary, /\*\*First admin:\*\* Created/);
+  assert.match(run.out, /No database change removes stored records/);
   for (const secret of [ADMIN.password, TOKEN, DB_PASSWORD, localStack().secretKey, localStack().serviceRoleKey]) {
     assert.ok(!run.out.includes(secret), "the deploy never prints a secret");
     assert.ok(!run.summary.includes(secret), "the summary never holds a secret");
@@ -138,6 +139,7 @@ test("running the deploy again is safe, keeps settings and records the upgrade",
 
   const run = runDeploy("server");
   assert.equal(run.code, 0, run.out);
+  assert.match(run.out, /All records are still there/);
   assert.equal(sql("select count(*) from public.profiles"), "1", "no second admin is made");
   assert.match(run.summary, /already has accounts/);
 
@@ -152,6 +154,18 @@ test("running the deploy again is safe, keeps settings and records the upgrade",
     sql("select (details->>'from') || ' ' || (details->>'to') from public.audit_log where action = 'server.updated' order by id desc limit 1"),
     `0.9.0 ${VERSION}`,
   );
+});
+
+test("a deploy that loses records stops with a clear message", async () => {
+  sql(`insert into public.templates (scope, name, body) select 'shared', 'Upgrade check ' || n, 'Section one:\n[details]' from generate_series(1, 5) n`);
+  const run = runDeploy("server", {
+    FAKE_CLI_PUSH_SQL: "delete from public.templates where name like 'Upgrade check %'",
+    FAKE_CLI_DB_URL: localStack().dbUrl,
+  });
+  assert.equal(run.code, 1);
+  assert.match(run.out, /Some records are missing after the database update \(5 templates fewer than before\)/);
+  assert.match(run.out, /Restore the latest backup/);
+  assert.equal(sql("select count(*) from public.templates where name like 'Upgrade check %'"), "0");
 });
 
 test("a project with only the older keys works too", async () => {
@@ -206,6 +220,7 @@ test("check mode changes nothing", async () => {
   const run = runDeploy("check");
   assert.equal(run.code, 0, run.out);
   assert.match(run.out, /Nothing was changed/);
+  assert.match(run.out, /No database change removes stored records/);
   assert.deepEqual(commands(run), ["--version"]);
   assert.deepEqual(await mock("/__auth_config"), authBefore);
   assert.deepEqual(await mock("/__secrets"), {});

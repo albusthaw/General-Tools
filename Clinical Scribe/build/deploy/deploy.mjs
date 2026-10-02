@@ -10,7 +10,7 @@
 import { parseCliVersion, runCli } from "./cli.mjs";
 import { managementApi } from "./management-api.mjs";
 import { DeployError, done, endSection, failure, mask, scrub, section, setOutput, summary, warn } from "./output.mjs";
-import { deployServer, readKeys, waitForProject } from "./server.mjs";
+import { checkDatabaseChanges, deployServer, readKeys, waitForProject } from "./server.mjs";
 import { readSettings } from "./settings.mjs";
 import { buildWebApp } from "./web.mjs";
 
@@ -79,7 +79,9 @@ async function main() {
   endSection();
 
   let server = null;
-  if (!plan.checkOnly) {
+  if (plan.checkOnly) {
+    checkDatabaseChanges(settings);
+  } else {
     // The web app is built first, so a failed build stops the deploy before the
     // server is changed.
     if (plan.web) await buildWebApp(settings, keys);
