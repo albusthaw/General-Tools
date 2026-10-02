@@ -30,9 +30,9 @@ See `YT Bulk Publish/README.md` for setup, building and known limits.
 
 ## Clinical Scribe
 
-A web app for clinicians. It records a consultation, turns the speech into a transcript with ElevenLabs or Gemini, and writes a clinical note with Gemini or DeepSeek in the format the clinician chooses (SOAP note by default, or templates made with AI help). Processing carries on in the background even if the browser is closed. Admins manage people, transcription minutes, AI keys and models; every look at someone else's records is logged with a reason.
+A web app for clinicians. It records a consultation, turns the speech into a transcript with ElevenLabs or Gemini, and writes a clinical note with Gemini or DeepSeek in the format the clinician chooses (SOAP note by default, or templates made with AI help). Processing carries on in the background even if the browser is closed. Admins manage people, transcription minutes, AI keys and models; every look at someone else's records or audio is logged with a reason.
 
-It runs on your own Supabase project. The GitHub workflow "Deploy Clinical Scribe" sets up the database, server functions, sign-in settings, the first admin and the web app in one run, and the same run installs upgrades. See `Clinical Scribe/README.md` for the step-by-step guide.
+It runs on your own Supabase project. The GitHub workflow "Deploy Clinical Scribe" sets up the database, server functions, sign-in settings, the first admin and the web app in one run, and the same run installs upgrades without losing any records. See `Clinical Scribe/README.md` for the step-by-step guide.
 
 ## Repository layout
 
