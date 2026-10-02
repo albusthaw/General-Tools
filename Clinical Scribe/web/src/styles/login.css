@@ -1,0 +1,141 @@
+/* Sign-in and other full-page messages. */
+.login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+}
+
+.login-card {
+  width: min(440px, 100%);
+  padding: 34px 32px 28px;
+  border-radius: var(--radius-xl);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: rise var(--t-med) var(--ease);
+}
+
+.login-brand {
+  margin-bottom: 4px;
+}
+
+.login-brand .brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+}
+
+.login-brand .brand-name {
+  font-size: 24px;
+}
+
+.login-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 34px;
+  letter-spacing: -0.015em;
+}
+
+.login-text {
+  color: var(--ink-2);
+  font-size: 16px;
+}
+
+.login-note {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--blue-50);
+  border: 1px solid rgba(36, 99, 208, 0.2);
+  color: var(--ink-2);
+  font-size: 14.5px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form .input {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.login-error {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: #fff1f3;
+  border: 1px solid rgba(194, 42, 69, 0.3);
+}
+
+.or-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0 14px;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.or-line::before,
+.or-line::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.google-btn {
+  background: #fff;
+}
+
+.google-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.login-help {
+  font-size: 14px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.login-foot {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.login-actions {
+  margin-top: 4px;
+}
+
+.blocked-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--blue-100);
+  color: var(--blue-700);
+}
+
+.blocked-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+@media (max-width: 759px) {
+  .login-card {
+    padding: 28px 20px 22px;
+  }
+
+  .login-title {
+    font-size: 30px;
+  }
+}
