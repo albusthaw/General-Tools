@@ -91,7 +91,7 @@ The same upgrade can be run from a computer with `node build/deploy/deploy.mjs` 
 
 ## 4. Host the web app somewhere else
 
-GitHub Pages is the simplest choice, but any static web host works, for example Vercel, Netlify or Cloudflare Pages. These hosts can also send extra security headers, which GitHub Pages cannot; the files `web/vercel.json` and `web/public/_headers` already contain them.
+GitHub Pages is the simplest choice, but any static web host works, for example Vercel, Netlify or Cloudflare Pages. These hosts give the app its own address and can send extra security headers, which GitHub Pages cannot; the files `web/vercel.json` and `web/public/_headers` already contain them.
 
 1. Create a site on the host from this repository with these settings:
    - Root (base) directory: `Clinical Scribe/web`
@@ -135,6 +135,7 @@ Put the contents of `web/dist` on any static web host. The files use relative pa
 - **Records**: each person sees only their own recordings. Admins can open someone else's records only through **Review records**, which needs a reason and a confirmation. Every list viewed, record opened and item copied is written to the audit log with the admin's name and reason. The audit log cannot be changed or deleted, even by admins.
 - **Audio** is kept in a private storage area. Admins choose how long it is kept (**AI settings → Recordings and sign-in**). Gemini copies are deleted from Google as soon as the transcript is read. ElevenLabs offers zero retention on plans that allow it.
 - **Before recording real patients**: use paid plans for Supabase and the AI services, and sign the agreements your organisation needs (for example a data processing agreement or a business associate agreement). Choose a Supabase region that matches your data rules.
+- **Give the app its own web address for real use.** All GitHub Pages sites of one GitHub account share the same address (`<your-name>.github.io`), so pages from your other repositories could read what the app keeps in the browser. Use a custom domain for GitHub Pages (**Settings → Pages → Custom domain**, then run the deploy again), or another host (section 4).
 - Notes are written by AI from the transcript. **Always check a note before you use it.** Clinical Scribe supports documentation; it does not replace clinical judgement.
 
 The full security design is in `project.md` (section 7).

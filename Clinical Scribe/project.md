@@ -191,6 +191,7 @@ Private schema `app_private` (not exposed by the API): runtime settings (worker 
 | Storage abuse | Private bucket, 50 MB per file, audio types only, uploads only into the caller's own open recording folder, no client deletes. |
 | Secrets in a public repository | The repository holds no project address, key or password. The deploy workflow reads GitHub secrets and masks every derived value; workflow logs are public, so nothing secret is echoed. |
 | Shoulder-surfing and shared devices | Automatic sign-out after a period without activity (not while recording), and sign-out clears local drafts. |
+| Other sites on the same web address | All GitHub Pages sites of one account share one origin, and so share browser storage. The README tells owners to give the app its own address (a custom domain or another host) before real use. |
 
 Default privileges are changed in the first migration so new functions are not executable by `anon` or `authenticated` unless granted on purpose.
 
