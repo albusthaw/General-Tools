@@ -9,6 +9,7 @@ export const ROUTES = [
   { name: "history-detail", pattern: new RegExp(`^/history/(${UUID})$`), module: "scribe", title: "History" },
   { name: "admin-users", pattern: /^\/admin\/users$/, admin: true, title: "User settings" },
   { name: "admin-ai", pattern: /^\/admin\/ai$/, admin: true, title: "AI settings" },
+  { name: "admin-recordings", pattern: /^\/admin\/recordings$/, admin: true, title: "Recording" },
   { name: "admin-review", pattern: /^\/admin\/review$/, admin: true, title: "Review records" },
   { name: "admin-audit", pattern: /^\/admin\/audit$/, admin: true, title: "Audit log" },
   { name: "admin-google", pattern: /^\/admin\/google$/, admin: true, title: "Google sign-in" },

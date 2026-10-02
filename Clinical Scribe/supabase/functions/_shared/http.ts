@@ -27,6 +27,28 @@ function corsHeaders(req: Request): Record<string, string> {
   };
 }
 
+// A handler answers with a file by returning one of these instead of data.
+export class FileReply {
+  constructor(
+    public body: Blob,
+    public filename: string,
+  ) {}
+}
+
+function file(req: Request, reply: FileReply): Response {
+  return new Response(reply.body, {
+    status: 200,
+    headers: {
+      ...corsHeaders(req),
+      // Read by the app as plain bytes; never shown by the browser as a page.
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${reply.filename.replace(/[^A-Za-z0-9._-]/g, "_")}"`,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 export function json(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -66,6 +88,7 @@ export function serve(handler: (req: Request) => Promise<unknown>): void {
     if (req.method !== "POST") return json(req, { error: { code: "not_found", message: "Not found." } }, 404);
     try {
       const data = await handler(req);
+      if (data instanceof FileReply) return file(req, data);
       return json(req, { ok: true, data: data ?? null });
     } catch (error) {
       if (error instanceof AppError) {

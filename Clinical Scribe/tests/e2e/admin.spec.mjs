@@ -1,5 +1,5 @@
-// Admin screens: people, minutes, roles, AI settings, record review with its audit
-// trail, Google sign-in and the email settings.
+// Admin screens: people, minutes, roles, AI settings and model lists, record review
+// and recording audio with their audit trail, Google sign-in and the email settings.
 import { expect, test } from "@playwright/test";
 import { mock } from "../helpers/local.mjs";
 import { ADMIN, go, record, signIn, signOut, USER } from "./helpers.mjs";
@@ -71,6 +71,26 @@ test("change the note service in AI settings", async ({ page }) => {
   await expect(page.locator(".key-result.ok").first()).toBeVisible();
 });
 
+test("update the AI model lists and test the chosen models", async ({ page }) => {
+  await signIn(page, ADMIN);
+  await go(page, "/admin/ai");
+  const models = page.locator("section", { has: page.getByRole("heading", { name: "AI models" }) });
+  await models.getByRole("button", { name: "Update model lists" }).click();
+  await expect(page.locator(".toast", { hasText: "Model lists updated." }).first()).toBeVisible();
+  await expect(models).toContainText("Lists updated just now.");
+
+  const transcription = page.locator("section", { has: page.getByRole("heading", { name: "Transcription", exact: true }) });
+  await expect(transcription.getByLabel("ElevenLabs model")).toHaveValue("scribe_v2_medical");
+  await expect(transcription.getByLabel("ElevenLabs model").locator("option", { hasText: "Scribe v2 Medical (recommended)" })).toHaveCount(1);
+  await expect(transcription.getByLabel("Gemini model").locator("option", { hasText: /live/i })).toHaveCount(0);
+  const notes = page.locator("section", { has: page.getByRole("heading", { name: "Notes", exact: true }) });
+  await expect(notes.getByLabel("Gemini model").locator("option", { hasText: "(recommended)" })).toHaveCount(1);
+
+  await models.getByRole("button", { name: "Test chosen models" }).click();
+  await expect(models.locator(".test-result.ok")).toHaveCount(3);
+  await expect(models.locator(".test-results")).toContainText("Transcription: ElevenLabs, scribe_v2_medical");
+});
+
 test("review another person's records, with every step in the audit log", async ({ page }) => {
   // Make sure the user has a record to review.
   await signIn(page, USER);
@@ -107,6 +127,48 @@ test("review another person's records, with every step in the audit log", async 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download CSV" }).click();
   expect((await download).suggestedFilename()).toMatch(/^clinical-scribe-audit-\d{4}-\d{2}-\d{2}\.csv$/);
+});
+
+test("listen to a recording only after giving a reason, with every step in the audit log", async ({ page }) => {
+  // Uses the "For review" recording made in the test above.
+  await signIn(page, ADMIN);
+  await go(page, "/admin/recordings");
+  await expect(page.getByText("Only administrators can see this page")).toBeVisible();
+  await expect(page.locator(".page-intro")).toContainText("Audio is kept for 7 days after the transcript is ready.");
+  await page.getByLabel("Person").selectOption({ label: `${USER.name} (${USER.email})` });
+  const row = page.locator(".recordings-table tbody tr").first();
+  await expect(row).toContainText(USER.name);
+  await expect(row).toContainText("Kept until");
+  await row.getByRole("button", { name: /Listen to the recording/ }).click();
+
+  const dialog = page.locator("dialog[open]");
+  await expect(dialog).toContainText(`This audio belongs to ${USER.name} and their patient`);
+  await dialog.getByRole("button", { name: "Open audio" }).click();
+  await expect(dialog.getByText("Give a clear reason of at least 10 characters.")).toBeVisible();
+  await dialog.getByLabel("Reason", { exact: true }).fill("Checking a disputed transcript");
+  await dialog.getByRole("button", { name: "Open audio" }).click();
+  await expect(dialog.getByText("Tick the box to confirm you understand that opening the audio is recorded.")).toBeVisible();
+  await dialog.getByLabel("I understand that opening this audio is written in the audit log, with my name and reason.").check();
+  await dialog.getByRole("button", { name: "Open audio" }).click();
+  await expect(dialog.locator(".facts")).toContainText("For review");
+  const audio = dialog.locator("audio").first();
+  await expect(audio).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => audio.evaluate((el) => el.readyState), { message: "the audio can be played" }).toBeGreaterThan(0);
+
+  const download = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download" }).first().click();
+  expect((await download).suggestedFilename()).toMatch(/^clinical-scribe-\d{4}-\d{2}-\d{2}-part-1\.webm$/);
+  await expect(page.locator(".toast", { hasText: "Download started. It is written in the audit log." })).toBeVisible();
+  await dialog.locator(".dialog-foot").getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await go(page, "/admin/audit");
+  await page.getByLabel("Show").selectOption({ label: "Recording audio" });
+  await page.getByRole("button", { name: "Show results" }).click();
+  const list = page.locator(".audit-list");
+  await expect(list).toContainText(`${ADMIN.name} opened the audio of ${USER.name}'s recording "For review"`);
+  await expect(list).toContainText(`${ADMIN.name} downloaded part 1 of the audio of ${USER.name}'s recording`);
+  await expect(list).toContainText("Reason: Checking a disputed transcript");
 });
 
 test("switch Google sign-in on, see it on the sign-in page, and switch it off", async ({ page, browser }) => {

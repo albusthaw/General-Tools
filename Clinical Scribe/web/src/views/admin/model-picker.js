@@ -1,53 +1,58 @@
-// Model choice: a live list from the AI service, plus "Other model" for typing a
-// name that is not listed yet.
+// Model choice: the saved list for the service (kept current with "Update model
+// lists"), plus "Other model…" for typing a name that is not listed.
 import { selectField, textField } from "../../components/fields.js";
-import { listModels } from "../../lib/api/admin.js";
 import { h } from "../../lib/dom.js";
 
 const OTHER = "__other__";
-const RECOMMENDED = new Set(["scribe_v2_medical", "gemini-3.5-transcribe", "gemini-3.8-flash", "deepseek-flash"]);
 
-export function modelPicker(label, { provider, purpose, value }) {
-  const select = selectField(label, [{ value, label: value }], { value });
+function optionLabel(model) {
+  if (model.recommended) return `${model.label} (recommended)`;
+  if (model.available === false) return `${model.label} (not offered to your account)`;
+  return model.label;
+}
+
+export function modelPicker(label, { value, models = [] }) {
+  const select = selectField(label, [], { value });
   const other = textField("Model name", { value: "", autocomplete: "off", attrs: { spellcheck: "false" } });
   other.el.hidden = true;
-  const note = h("p", { class: "field-hint", text: "Loading the list of models…" });
+  const note = h("p", { class: "field-hint model-note" });
   const el = h("div", { class: "model-picker" }, select.el, other.el, note);
+  let list = models;
+
+  function describe() {
+    const chosen = list.find((model) => model.id === select.value());
+    if (chosen) note.textContent = [chosen.note, chosen.id].filter(Boolean).join(" · ");
+    else if (select.value() === OTHER) note.textContent = "Type the model name exactly as the service writes it.";
+    else note.textContent = "This model is not in the current list. Update the lists, or test it before use.";
+  }
+
+  function render(keep) {
+    const options = list.map((model) => ({ value: model.id, label: optionLabel(model) }));
+    if (keep && keep !== OTHER && !options.some((option) => option.value === keep)) {
+      options.unshift({ value: keep, label: `${keep} (not in the list)` });
+    }
+    options.push({ value: OTHER, label: "Other model…" });
+    select.setOptions(options, keep);
+    other.el.hidden = select.value() !== OTHER;
+    describe();
+  }
 
   select.input.addEventListener("change", () => {
     other.el.hidden = select.value() !== OTHER;
     if (!other.el.hidden) other.input.focus();
+    describe();
   });
+  render(value);
 
-  let loadedFor = null;
-  async function load(nextProvider = provider) {
-    provider = nextProvider;
-    const keep = select.value() === OTHER ? other.value() || value : select.value() || value;
-    loadedFor = provider;
-    note.textContent = "Loading the list of models…";
-    try {
-      const result = await listModels(provider, purpose);
-      if (loadedFor !== provider) return;
-      const models = result?.models ?? [];
-      const options = models.map((m) => ({ value: m.id, label: RECOMMENDED.has(m.id) ? `${m.label} (recommended)` : m.label }));
-      if (keep && !options.some((o) => o.value === keep)) options.unshift({ value: keep, label: keep });
-      options.push({ value: OTHER, label: "Other model…" });
-      select.setOptions(options, keep);
-      note.textContent = result?.needs_key ? "Save the service key to see every available model." : "";
-    } catch (error) {
-      const options = keep ? [{ value: keep, label: keep }] : [];
-      options.push({ value: OTHER, label: "Other model…" });
-      select.setOptions(options, keep);
-      note.textContent = error?.message ? `The list could not be loaded: ${error.message}` : "The list could not be loaded.";
-    }
-    other.el.hidden = select.value() !== OTHER;
-  }
-
-  return {
+  const picker = {
     el,
-    load,
     value() {
       return select.value() === OTHER ? other.value() : select.value();
+    },
+    setModels(next) {
+      const keep = select.value() === OTHER ? other.value() || OTHER : select.value();
+      list = Array.isArray(next) ? next : [];
+      render(keep);
     },
     validate() {
       other.setError("");
@@ -58,4 +63,5 @@ export function modelPicker(label, { provider, purpose, value }) {
       return true;
     },
   };
+  return picker;
 }

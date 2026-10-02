@@ -126,7 +126,8 @@ function transcriptionBody(model: string, uri: string, mime: string, language: s
       generation_config: {
         transcription_config: {
           language_codes: language ? [language] : [],
-          mode: { type: "verbatim", diarization_mode: "speaker" },
+          // Word timings are what carry the speaker labels.
+          mode: { type: "verbatim", diarization_mode: "speaker", timestamp_granularities: ["word"] },
         },
       },
     };

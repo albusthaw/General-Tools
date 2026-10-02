@@ -21,6 +21,7 @@ const SCRIBE_TABS = [
 const ADMIN_LINKS = [
   { name: "admin-users", path: "/admin/users", label: "User settings", icon: "users" },
   { name: "admin-ai", path: "/admin/ai", label: "AI settings", icon: "sliders" },
+  { name: "admin-recordings", path: "/admin/recordings", label: "Recording", icon: "waveform" },
   { name: "admin-review", path: "/admin/review", label: "Review records", icon: "shield" },
   { name: "admin-audit", path: "/admin/audit", label: "Audit log", icon: "scroll" },
   { name: "admin-google", path: "/admin/google", label: "Google sign-in", icon: "globe" },
