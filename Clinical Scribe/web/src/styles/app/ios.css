@@ -1,0 +1,265 @@
+/* iPhone web app: the iOS 27 Liquid Glass style in the Clinical Scribe colours.
+   Floating glass bars and capsules, large bold titles in the system font, sheets
+   with large rounded corners. iOS 27 glass is more tinted than before, with a
+   bright top edge and a darker outer edge, so it stays readable. */
+html[data-theme="ios"] {
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --font-ui: var(--font-ios);
+  --bg-0: #f2f5fa;
+  --bg-1: #e7edf7;
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-strong: rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.95);
+  --glass-edge: rgba(19, 35, 63, 0.12);
+  --blur-float: blur(30px) saturate(180%);
+  --blur-card: blur(20px) saturate(170%);
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 34px;
+  --ios-shadow: 0 10px 32px rgba(19, 35, 63, 0.16), 0 0 0 0.5px rgba(19, 35, 63, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -0.5px 0 rgba(19, 35, 63, 0.06);
+}
+
+/* Body text follows the iPhone's own text size setting. */
+html[data-theme="ios"] body {
+  font: -apple-system-body;
+  font-family: var(--font-ios);
+}
+
+html[data-theme="ios"] .page-head h1,
+html[data-theme="ios"] .login-title,
+html[data-theme="ios"] .card-head h2,
+html[data-theme="ios"] .dialog-head h2,
+html[data-theme="ios"] .empty h2 {
+  font-family: var(--font-ios);
+}
+
+html[data-theme="ios"] .page-head h1 {
+  font-weight: 700;
+  font-size: 34px;
+  letter-spacing: 0.01em;
+}
+
+html[data-theme="ios"] .login-title {
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 0.005em;
+}
+
+/* Top bar: centred small title and a glass back button */
+html[data-theme="ios"] .app-back {
+  padding: 0 14px 0 6px;
+  background: var(--glass);
+  box-shadow: var(--ios-shadow);
+  backdrop-filter: var(--blur-float);
+  -webkit-backdrop-filter: var(--blur-float);
+}
+
+html[data-theme="ios"] .app-back:active,
+html[data-theme="ios"] .app-bar-button:active {
+  transform: scale(0.94);
+}
+
+html[data-theme="ios"] .app-bar-button {
+  box-shadow: var(--ios-shadow);
+}
+
+/* Floating glass tab bar that shrinks while scrolling */
+html[data-theme="ios"] {
+  --app-tabs-gap: 0px;
+}
+
+html[data-theme="ios"] .app-tabs {
+  left: calc(16px + var(--sa-left));
+  right: calc(16px + var(--sa-right));
+  bottom: calc(max(var(--sa-bottom), 14px) - 4px);
+  height: var(--app-tabs-h);
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  box-shadow: var(--ios-shadow);
+  backdrop-filter: var(--blur-float);
+  -webkit-backdrop-filter: var(--blur-float);
+  transition: left 380ms var(--spring), right 380ms var(--spring), height 380ms var(--spring);
+}
+
+html[data-theme="ios"] .app-tabs-inner {
+  padding: 4px;
+}
+
+html[data-theme="ios"] .app-tab-lens {
+  top: 4px;
+  bottom: 4px;
+  background: rgba(36, 99, 208, 0.12);
+  box-shadow: inset 0 0 0 0.5px rgba(36, 99, 208, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+html[data-theme="ios"] .app-tab-label {
+  font-size: 11px;
+  transition: opacity 200ms ease;
+}
+
+html[data-theme="ios"] .app-tabs.is-min {
+  left: 22%;
+  right: 22%;
+  height: 50px;
+}
+
+html[data-theme="ios"] .app-tabs.is-min .app-tab-label {
+  position: absolute;
+  opacity: 0;
+}
+
+html[data-theme="ios"] .app-mini {
+  bottom: calc(max(var(--sa-bottom), 14px) + var(--app-tabs-h) + 6px);
+  box-shadow: var(--ios-shadow);
+}
+
+html[data-theme="ios"] .app-frame.has-mini .app-content {
+  padding-bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + var(--app-mini-h) + 48px);
+}
+
+/* Cards, buttons and fields */
+html[data-theme="ios"] .glass-card {
+  border-radius: var(--radius-lg);
+}
+
+html[data-theme="ios"] .btn {
+  border-radius: var(--radius-pill);
+  min-height: 46px;
+  font-family: var(--font-ios);
+}
+
+html[data-theme="ios"] .btn.primary {
+  box-shadow: 0 8px 20px rgba(23, 71, 176, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+html[data-theme="ios"] .btn:hover {
+  transform: none;
+}
+
+html[data-theme="ios"] .btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+html[data-theme="ios"] .input,
+html[data-theme="ios"] .select,
+html[data-theme="ios"] .textarea,
+html[data-theme="ios"] .picker-row {
+  border-radius: 12px;
+  font-size: 17px;
+}
+
+html[data-theme="ios"] .segmented {
+  border-radius: var(--radius-pill);
+  background: rgba(118, 118, 128, 0.12);
+}
+
+html[data-theme="ios"] .segmented button {
+  border-radius: var(--radius-pill);
+}
+
+html[data-theme="ios"] .segmented button[aria-pressed="true"] {
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(19, 35, 63, 0.12), 0 0 0 0.5px rgba(19, 35, 63, 0.08);
+}
+
+/* Settings-style groups */
+html[data-theme="ios"] .more-group-title,
+html[data-theme="ios"] .recent-title,
+html[data-theme="ios"] .group-label,
+html[data-theme="ios"] .picker-group {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+html[data-theme="ios"] .more-icon {
+  border-radius: 8px;
+  background: var(--blue-600);
+  color: #fff;
+}
+
+html[data-theme="ios"] .more-row.danger .more-icon {
+  background: var(--bad);
+  color: #fff;
+}
+
+/* Sheets */
+html[data-theme="ios"] dialog.dialog.sheet,
+html[data-theme="ios"] dialog.dialog.sheet.wide {
+  border-radius: 34px 34px 0 0;
+  background: rgba(248, 250, 253, 0.94);
+  backdrop-filter: var(--blur-float);
+  -webkit-backdrop-filter: var(--blur-float);
+}
+
+html[data-theme="ios"] dialog.sheet .dialog-head h2 {
+  font-weight: 700;
+  font-size: 20px;
+}
+
+html[data-theme="ios"] .action-list {
+  border-radius: var(--radius-lg);
+}
+
+/* Short messages: glass capsules */
+html[data-theme="ios"] .toast {
+  border-radius: var(--radius-pill);
+  padding: 12px 18px;
+  background: var(--glass);
+  box-shadow: var(--ios-shadow);
+  backdrop-filter: var(--blur-float);
+  -webkit-backdrop-filter: var(--blur-float);
+}
+
+/* Processing steps: one per row, the current one with a spinner */
+html[data-theme="ios"] .steps {
+  grid-template-columns: 1fr;
+}
+
+html[data-theme="ios"] .step {
+  border-radius: var(--radius-md);
+}
+
+/* Recorder */
+html[data-theme="ios"] .btn.pause-circle {
+  background: var(--glass-strong);
+  box-shadow: var(--ios-shadow);
+}
+
+/* Less glass when the iPhone asks for it */
+@media (prefers-reduced-transparency: reduce) {
+  html[data-theme="ios"] .app-tabs,
+  html[data-theme="ios"] .app-back,
+  html[data-theme="ios"] .app-bar-button,
+  html[data-theme="ios"] .app-mini,
+  html[data-theme="ios"] .toast,
+  html[data-theme="ios"] dialog.dialog.sheet {
+    background: var(--glass-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  html[data-theme="ios"] {
+    --ios-shadow: 0 0 0 1px rgba(19, 35, 63, 0.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="ios"] .app-tabs {
+    transition: none;
+  }
+
+  html[data-theme="ios"] .app-tabs.is-min {
+    left: calc(16px + var(--sa-left));
+    right: calc(16px + var(--sa-right));
+    height: var(--app-tabs-h);
+  }
+
+  html[data-theme="ios"] .app-tabs.is-min .app-tab-label {
+    position: static;
+    opacity: 1;
+  }
+}

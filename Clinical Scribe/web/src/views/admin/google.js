@@ -71,7 +71,10 @@ function tokenCard(state, reload) {
 }
 
 function googleCard(state, reload) {
-  const origin = new URL(appAddress()).origin;
+  // The website's origin (the Android app has no web address of its own; it uses
+  // the clinic's website when the server named one).
+  const address = appAddress() || config.siteUrl;
+  const origin = address ? new URL(address).origin : "";
   const clientId = textField("Client ID", { value: state.client_id ?? "", autocomplete: "off", attrs: { spellcheck: "false" } });
   const clientSecret = passwordField("Client secret", { autocomplete: "off", placeholder: state.client_id ? "Saved. Enter it again only if it changed." : "" });
   const enabled = switchRow("Let people sign in with Google", { description: "Only people already added in User settings can sign in.", checked: state.enabled });
@@ -108,7 +111,7 @@ function googleCard(state, reload) {
         "ol",
         { class: "steps-list" },
         h("li", {}, "In ", external("https://console.cloud.google.com/apis/credentials", "Google Cloud Console"), ", create an OAuth client ID of the type Web application."),
-        h("li", {}, h("span", { text: "Under Authorised JavaScript origins, add:" }), copyLine(origin)),
+        origin ? h("li", {}, h("span", { text: "Under Authorised JavaScript origins, add:" }), copyLine(origin)) : null,
         h("li", {}, h("span", { text: "Under Authorised redirect URIs, add:" }), copyLine(`${config.supabaseUrl}/auth/v1/callback`)),
         h("li", { text: "Copy the Client ID and Client secret into the fields below." }),
       ),

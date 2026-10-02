@@ -6,6 +6,7 @@ import { menuButton } from "../../components/menu.js";
 import { listUsers, removeUser, setRole, setStatus } from "../../lib/api/admin.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
+import { appHooks } from "../../lib/platform/hooks.js";
 import { minutes, relative } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
 import { profile } from "../../lib/store.js";
@@ -185,6 +186,7 @@ export async function renderUsers(container) {
     clearTimeout(debounce);
     debounce = setTimeout(load, 300);
   });
+  appHooks.enhanceList?.(tableBox, { onRefresh: load });
   await load();
   return () => clearTimeout(debounce);
 }

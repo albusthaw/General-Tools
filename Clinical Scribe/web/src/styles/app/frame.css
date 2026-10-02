@@ -1,0 +1,555 @@
+/* The app frame (Android app and iPhone web app): top bar, content, tab bar, side
+   bar on wide screens, mini recorder, floating button, pull to refresh and page
+   motion. The two themes (ios.css, android.css) set the look on top of this. */
+html[data-app] {
+  /* The Android app gets the system bar sizes from Capacitor; iPhone from env(). */
+  --sa-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sa-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --sa-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --sa-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --app-bar-h: 52px;
+  --app-tabs-h: 64px;
+  --app-tabs-gap: 10px;
+  --app-gutter: 16px;
+  --app-content-max: 640px;
+  --app-mini-h: 56px;
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html[data-app] body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+.app-frame {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Website parts the app frame replaces */
+html[data-app] .module-tabs,
+html[data-app] .back-link,
+html[data-app] .moved-to-app-bar {
+  display: none !important;
+}
+
+/* Top bar */
+.app-bar {
+  position: fixed;
+  z-index: 30;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: var(--sa-top) var(--sa-right) 0 var(--sa-left);
+  transition: background var(--t-med) ease, box-shadow var(--t-med) ease, backdrop-filter var(--t-med) ease;
+}
+
+.app-bar-inner {
+  height: var(--app-bar-h);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.app-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 0 12px 0 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--blue-700);
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.app-back svg {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.app-back-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-bar-title {
+  grid-column: 2;
+  max-width: 60vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+  font-size: 17px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity var(--t-med) ease, transform var(--t-med) var(--ease);
+}
+
+.app-bar.is-compact .app-bar-title {
+  opacity: 1;
+  transform: none;
+}
+
+.app-bar-actions {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-bar-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  color: var(--blue-700);
+  box-shadow: 0 0 0 1px var(--glass-edge), inset 0 1px 0 var(--glass-highlight), var(--shadow-press);
+  backdrop-filter: var(--blur-float);
+  -webkit-backdrop-filter: var(--blur-float);
+}
+
+.app-bar.is-compact {
+  background: var(--glass);
+  box-shadow: 0 1px 0 var(--line);
+  backdrop-filter: var(--blur-float);
+  -webkit-backdrop-filter: var(--blur-float);
+}
+
+/* Content */
+.app-content {
+  position: relative;
+  display: block;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding:
+    calc(var(--sa-top) + var(--app-bar-h) + 2px)
+    calc(var(--app-gutter) + var(--sa-right))
+    calc(var(--app-tabs-h) + var(--sa-bottom) + var(--app-tabs-gap) + 36px)
+    calc(var(--app-gutter) + var(--sa-left));
+}
+
+.app-frame.has-mini .app-content {
+  padding-bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + var(--app-tabs-gap) + var(--app-mini-h) + 48px);
+}
+
+html[data-app] .app-content .content-inner {
+  max-width: var(--app-content-max);
+}
+
+html[data-app] .page-head {
+  margin-bottom: 18px;
+}
+
+html[data-app] .page-head h1 {
+  font-size: 32px;
+  line-height: 1.15;
+}
+
+html[data-app] .page-head .head-actions {
+  width: 100%;
+}
+
+html[data-app] .page-head .head-actions > .btn {
+  flex: 1;
+}
+
+.content-inner.page-in.from-right {
+  animation: app-push 300ms var(--spring);
+}
+
+.content-inner.page-in.fade-in {
+  animation: app-fade 220ms ease-out;
+}
+
+@keyframes app-push {
+  from {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+
+@keyframes app-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Tab bar */
+.app-tabs {
+  position: fixed;
+  z-index: 28;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.app-tabs-inner {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  height: 100%;
+}
+
+.app-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  color: var(--ink-3);
+  font-weight: 650;
+  font-size: 11.5px;
+  text-decoration: none;
+  transition: color var(--t-fast) ease, transform var(--t-fast) ease;
+}
+
+.app-tab:active {
+  transform: scale(0.94);
+}
+
+.app-tab[aria-current="page"] {
+  color: var(--blue-700);
+}
+
+.app-tab-icon {
+  display: grid;
+  place-items: center;
+}
+
+.app-tab-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tab-lens {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: var(--lens-w, 0);
+  transform: translateX(var(--lens-x, 0));
+  border-radius: var(--radius-pill);
+  transition: transform 420ms cubic-bezier(0.3, 1.25, 0.45, 1), width 420ms cubic-bezier(0.3, 1.25, 0.45, 1), opacity var(--t-fast) ease;
+}
+
+/* Mini recorder */
+.app-mini {
+  position: fixed;
+  z-index: 27;
+  left: calc(16px + var(--sa-left));
+  right: calc(16px + var(--sa-right));
+  bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + var(--app-tabs-gap) + 8px);
+  height: var(--app-mini-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 16px;
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  box-shadow: var(--shadow-float), 0 0 0 1px var(--glass-edge), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: var(--blur-float);
+  -webkit-backdrop-filter: var(--blur-float);
+  animation: app-fade 220ms ease-out;
+}
+
+.mini-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  color: var(--ink);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.mini-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+.app-mini.is-paused .mini-dot {
+  background: var(--warn);
+  animation: none;
+}
+
+.mini-time {
+  margin-left: auto;
+  color: var(--ink-2);
+}
+
+.mini-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+}
+
+.mini-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Floating button (Android) */
+.app-fab {
+  position: fixed;
+  z-index: 26;
+  right: calc(16px + var(--sa-right));
+  bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + 16px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  max-width: calc(100vw - 32px);
+  padding: 0 20px 0 16px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 650;
+  font-size: 15.5px;
+  box-shadow: 0 10px 24px rgba(23, 71, 176, 0.32), 0 2px 6px rgba(19, 35, 63, 0.18);
+  transition: padding 260ms var(--spring), border-radius 260ms var(--spring), transform var(--t-fast) ease;
+}
+
+.app-fab:active {
+  border-radius: 14px;
+  transform: scale(0.96);
+}
+
+.app-fab-label {
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 220px;
+  transition: max-width 260ms var(--spring), opacity 200ms ease;
+}
+
+.app-fab.is-small {
+  padding: 0 16px;
+}
+
+.app-fab.is-small .app-fab-label {
+  max-width: 0;
+  opacity: 0;
+}
+
+.app-frame.has-mini .app-fab {
+  bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + var(--app-mini-h) + 28px);
+}
+
+/* Offline bar */
+.app-offline {
+  position: fixed;
+  z-index: 29;
+  top: calc(var(--sa-top) + var(--app-bar-h));
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px calc(16px + var(--sa-right)) 8px calc(16px + var(--sa-left));
+  background: #fff4dc;
+  color: var(--warn);
+  border-bottom: 1px solid var(--warn-line);
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.app-offline svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+/* Pull to refresh */
+.ptr {
+  position: fixed;
+  z-index: 29;
+  top: calc(var(--sa-top) + var(--app-bar-h));
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, calc(var(--pull, 0px) - 44px));
+  transition: opacity var(--t-fast) ease;
+}
+
+.ptr.is-pulling,
+.ptr.is-refreshing {
+  opacity: 1;
+}
+
+.ptr.is-refreshing {
+  transform: translate(-50%, 16px);
+  transition: transform var(--t-med) var(--ease), opacity var(--t-fast) ease;
+}
+
+.ptr-badge {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--glass-solid);
+  color: var(--blue-600);
+  box-shadow: var(--shadow-float), 0 0 0 1px var(--glass-edge);
+}
+
+.ptr-badge svg {
+  width: 20px;
+  height: 20px;
+  transform: rotate(calc(var(--pull, 0px) * 2.4));
+}
+
+.ptr.is-armed .ptr-badge {
+  background: var(--blue-100);
+}
+
+.ptr.is-refreshing .ptr-badge svg {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Short messages sit above the tab bar */
+html[data-app] .toast-wrap {
+  left: calc(12px + var(--sa-left));
+  right: calc(12px + var(--sa-right));
+  bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + var(--app-tabs-gap) + 14px);
+  align-items: center;
+}
+
+html[data-app] body:has(.app-frame.has-mini) .toast-wrap {
+  bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + var(--app-tabs-gap) + var(--app-mini-h) + 24px);
+}
+
+html[data-app] body:not(:has(.app-frame)) .toast-wrap {
+  bottom: calc(var(--sa-bottom) + 20px);
+}
+
+/* Side bar on tablets and wide windows */
+.app-side {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  html[data-app] {
+    --app-content-max: 1120px;
+  }
+
+  .app-side {
+    position: fixed;
+    z-index: 31;
+    top: calc(16px + var(--sa-top));
+    bottom: calc(16px + var(--sa-bottom));
+    left: calc(16px + var(--sa-left));
+    width: calc(var(--sidebar) - 16px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px 12px 12px;
+    border-radius: 24px;
+  }
+
+  .app-side .brand {
+    padding: 2px 8px 18px;
+  }
+
+  .side-account {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 56px;
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .side-account[aria-current="page"],
+  .side-account:hover {
+    background: rgba(255, 255, 255, 0.75);
+  }
+
+  .app-tabs,
+  .app-fab {
+    display: none !important;
+  }
+
+  .app-bar {
+    left: calc(var(--sidebar) + var(--sa-left));
+  }
+
+  .app-content {
+    margin-left: var(--sidebar);
+    padding-bottom: calc(var(--sa-bottom) + 48px);
+  }
+
+  .app-frame.has-mini .app-content {
+    padding-bottom: calc(var(--sa-bottom) + var(--app-mini-h) + 48px);
+  }
+
+  .app-mini {
+    left: calc(var(--sidebar) + 24px + var(--sa-left));
+    right: auto;
+    width: min(420px, calc(100vw - var(--sidebar) - 48px));
+    bottom: calc(20px + var(--sa-bottom));
+  }
+
+  html[data-app] .toast-wrap {
+    left: auto;
+    right: calc(22px + var(--sa-right));
+    bottom: calc(22px + var(--sa-bottom));
+    align-items: flex-end;
+  }
+
+  html[data-app] .page-head .head-actions {
+    width: auto;
+  }
+
+  html[data-app] .page-head .head-actions > .btn {
+    flex: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content-inner.page-in.from-right,
+  .content-inner.page-in.fade-in,
+  .app-mini {
+    animation: none;
+  }
+
+  .app-tab-lens,
+  .app-fab,
+  .app-fab-label,
+  .app-bar-title {
+    transition: none;
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "appId": "io.github.albusthaw.clinicalscribe",
+  "appName": "Clinical Scribe",
+  "webDir": "dist/app",
+  "backgroundColor": "#f4f7fc",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost",
+    "cleartext": false
+  },
+  "android": {
+    "path": "../android",
+    "allowMixedContent": false,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false,
+    "loggingBehavior": "none"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "LIGHT"
+    },
+    "Keyboard": {
+      "resizeOnFullScreen": true
+    }
+  }
+}

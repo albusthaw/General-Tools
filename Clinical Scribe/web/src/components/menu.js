@@ -11,6 +11,13 @@ function closeOpen() {
   }
 }
 
+/** Closes an open menu; true when one was open (used by the Android back gesture). */
+export function closeOpenMenu() {
+  if (!openMenu) return false;
+  closeOpen();
+  return true;
+}
+
 document.addEventListener("click", (event) => {
   if (openMenu && !openMenu.anchor.contains(event.target)) closeOpen();
 });

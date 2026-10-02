@@ -2,6 +2,7 @@
 // On phones they appear as bottom sheets.
 import { append, h } from "../lib/dom.js";
 import { messageOf } from "../lib/errors.js";
+import { appHooks } from "../lib/platform/hooks.js";
 import { button, iconButton, withBusy } from "./button.js";
 import { textField } from "./fields.js";
 
@@ -68,6 +69,7 @@ export function openDialog({ title, body = [], actions = [], wide = false, onClo
     if (dismissible && event.target === dialog) close(false);
   });
 
+  appHooks.decorateDialog?.(dialog, close);
   document.body.append(dialog);
   dialog.showModal();
   return { dialog, close, showError, body: bodyEl };

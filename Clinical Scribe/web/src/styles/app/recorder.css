@@ -1,0 +1,138 @@
+/* The recorder in the apps: a larger record button, and while recording a
+   one-hand layout with a big Pause/Resume circle inside a sound ring. */
+html[data-app] .recorder-card.app-ready .record-button {
+  width: 128px;
+  height: 128px;
+}
+
+html[data-app] .recorder-card.app-ready .record-button svg {
+  width: 40px;
+  height: 40px;
+}
+
+html[data-app] .recorder-card.app-ready .record-button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+html[data-app] .recorder-card.app-live {
+  min-height: calc(100dvh - var(--sa-top) - var(--app-bar-h) - var(--app-tabs-h) - var(--sa-bottom) - 120px);
+  justify-content: center;
+  gap: 16px;
+}
+
+html[data-app] .recorder-card.app-live .timer {
+  font-size: 56px;
+}
+
+/* The sound ring replaces the level bars */
+html[data-app] .recorder-card.app-live .meter {
+  display: none;
+}
+
+html[data-app] .recorder-card.app-live .live-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  width: min(360px, 100%);
+}
+
+.pause-holder {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.sound-ring {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  width: 96px;
+  height: 96px;
+  margin-left: -48px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(36, 99, 208, 0.22) 0%, rgba(36, 99, 208, 0.08) 60%, rgba(36, 99, 208, 0) 72%);
+  transform: scale(calc(1.12 + var(--level, 0) * 0.65));
+  transition: transform 90ms linear;
+  pointer-events: none;
+}
+
+.recorder-card.is-paused .sound-ring {
+  background: radial-gradient(circle, rgba(19, 35, 63, 0.1) 0%, rgba(19, 35, 63, 0) 70%);
+  transform: scale(1.08);
+}
+
+.btn.pause-circle {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  min-height: 96px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0;
+  box-shadow: var(--shadow-float), 0 0 0 1px var(--glass-edge), inset 0 1px 0 var(--glass-highlight);
+}
+
+.btn.pause-circle span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.btn.pause-circle svg {
+  width: 36px;
+  height: 36px;
+}
+
+.btn.pause-circle:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.pause-caption {
+  font-weight: 650;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+html[data-app] .recorder-card.app-live .live-controls > .btn.primary {
+  width: 100%;
+  min-height: 56px;
+  font-size: 17px;
+}
+
+@media (max-width: 380px) {
+  html[data-app] .recorder-card.app-ready .record-button {
+    width: 112px;
+    height: 112px;
+  }
+
+  html[data-app] .recorder-card.app-live .timer {
+    font-size: 48px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  html[data-app] .recorder-card.app-live {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    min-height: 0;
+  }
+
+  html[data-app] .recorder-card.app-live .live-controls {
+    grid-row: 1 / span 4;
+    grid-column: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sound-ring {
+    transition: none;
+    transform: scale(1.12);
+  }
+}

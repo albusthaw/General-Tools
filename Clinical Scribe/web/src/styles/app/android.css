@@ -1,0 +1,217 @@
+/* Android app: Material 3 Expressive motion and shapes in the Clinical Scribe
+   colours. A left-aligned top app bar, a docked navigation bar with a pill behind
+   the active tab, round buttons that briefly become rounded squares when pressed,
+   a floating button, dark snackbars and a wavy line for work in progress. */
+html[data-theme="android"] {
+  --app-bar-h: 64px;
+  --app-tabs-h: 76px;
+  --app-tabs-gap: 0px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+  --m3-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* Top app bar */
+html[data-theme="android"] .app-bar-inner {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0 4px 0 8px;
+}
+
+html[data-theme="android"] .app-back {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  justify-content: center;
+  color: var(--ink);
+}
+
+html[data-theme="android"] .app-back:active {
+  background: rgba(19, 35, 63, 0.08);
+}
+
+html[data-theme="android"] .app-back-label {
+  display: none;
+}
+
+html[data-theme="android"] .app-bar-title {
+  justify-self: start;
+  padding-left: 8px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+html[data-theme="android"] .app-bar:not(.has-back) .app-bar-title {
+  padding-left: 12px;
+}
+
+html[data-theme="android"] .page-head h1 {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 30px;
+  letter-spacing: -0.01em;
+}
+
+/* Docked navigation bar */
+html[data-theme="android"] .app-tabs {
+  height: calc(var(--app-tabs-h) + var(--sa-bottom));
+  padding: 0 var(--sa-right) var(--sa-bottom) var(--sa-left);
+  background: rgba(247, 249, 254, 0.9);
+  box-shadow: 0 -1px 0 var(--line);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+}
+
+html[data-theme="android"] .app-tab {
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+html[data-theme="android"] .app-tab:active {
+  transform: none;
+}
+
+html[data-theme="android"] .app-tab-icon {
+  width: 64px;
+  height: 32px;
+}
+
+html[data-theme="android"] .app-tab-lens {
+  top: 12px;
+  bottom: auto;
+  width: 64px;
+  height: 32px;
+  border-radius: 16px;
+  background: var(--blue-100);
+  transform: translateX(calc(var(--lens-x, 0px) + (var(--lens-w, 64px) - 64px) / 2));
+}
+
+html[data-theme="android"] .app-tab[aria-current="page"] {
+  color: var(--blue-800);
+  font-weight: 700;
+}
+
+html[data-theme="android"] .app-mini {
+  bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + 10px);
+  border-radius: 20px;
+}
+
+html[data-theme="android"] .app-frame.has-mini .app-content {
+  padding-bottom: calc(var(--app-tabs-h) + var(--sa-bottom) + var(--app-mini-h) + 40px);
+}
+
+/* Round buttons that change shape when pressed */
+html[data-theme="android"] .btn {
+  border-radius: var(--radius-pill);
+  min-height: 48px;
+  transition: border-radius 220ms var(--m3-spring), transform var(--t-fast) ease, box-shadow var(--t-fast) ease, background var(--t-fast) ease;
+}
+
+html[data-theme="android"] .btn:hover {
+  transform: none;
+}
+
+html[data-theme="android"] .btn:active:not(:disabled) {
+  border-radius: 14px;
+}
+
+html[data-theme="android"] .btn.icon-only:active:not(:disabled) {
+  border-radius: 12px;
+}
+
+html[data-theme="android"] .record-button:active:not(:disabled),
+html[data-theme="android"] .btn.pause-circle:active:not(:disabled) {
+  border-radius: 34%;
+}
+
+html[data-theme="android"] .record-button,
+html[data-theme="android"] .btn.pause-circle {
+  transition: border-radius 260ms var(--m3-spring), transform var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+
+html[data-theme="android"] .input,
+html[data-theme="android"] .select,
+html[data-theme="android"] .textarea,
+html[data-theme="android"] .picker-row {
+  min-height: 56px;
+  border-radius: 12px;
+}
+
+html[data-theme="android"] .segmented button[aria-pressed="true"] {
+  background: var(--blue-100);
+  color: var(--blue-800);
+}
+
+/* Sheets with a drag handle */
+html[data-theme="android"] .sheet-grabber {
+  width: 32px;
+  height: 4px;
+  margin-top: 14px;
+  border-radius: 2px;
+  background: rgba(19, 35, 63, 0.4);
+}
+
+html[data-theme="android"] dialog.dialog.sheet,
+html[data-theme="android"] dialog.dialog.sheet.wide {
+  border-radius: 28px 28px 0 0;
+}
+
+/* Dark snackbars */
+html[data-theme="android"] .toast {
+  border: 0;
+  border-radius: 14px;
+  background: #1b2740;
+  color: #f4f7fc;
+  box-shadow: 0 10px 28px rgba(19, 35, 63, 0.3);
+}
+
+html[data-theme="android"] .toast.ok svg {
+  color: #7ee2b0;
+}
+
+html[data-theme="android"] .toast.bad svg {
+  color: #ff9aa9;
+}
+
+html[data-theme="android"] .toast.info svg {
+  color: #a9c8ff;
+}
+
+html[data-theme="android"] .snackbar .btn {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: #a9c8ff;
+}
+
+/* Processing steps: one per row, with a wavy line under the current one */
+html[data-theme="android"] .steps {
+  grid-template-columns: 1fr;
+}
+
+html[data-theme="android"] .step.is-active .step-text::after {
+  content: "";
+  display: block;
+  height: 6px;
+  margin-top: 10px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='6' viewBox='0 0 24 6'%3E%3Cpath d='M0 3Q6 0 12 3T24 3' fill='none' stroke='%232463d0' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x;
+  background-size: 24px 6px;
+  animation: m3-wave 0.9s linear infinite;
+}
+
+@keyframes m3-wave {
+  to {
+    background-position-x: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="android"] .step.is-active .step-text::after {
+    animation: none;
+  }
+
+  html[data-theme="android"] .btn,
+  html[data-theme="android"] .record-button,
+  html[data-theme="android"] .btn.pause-circle {
+    transition: none;
+  }
+}

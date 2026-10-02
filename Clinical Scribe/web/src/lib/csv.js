@@ -1,5 +1,6 @@
 // CSV export. Cells that a spreadsheet could treat as a formula are prefixed
 // with an apostrophe so opening the file can never run anything.
+import { saveFile } from "./files.js";
 
 export function csvCell(value) {
   let text = value === null || value === undefined ? "" : String(value);
@@ -14,13 +15,5 @@ export function toCsv(rows, columns) {
 }
 
 export function downloadText(filename, text, type = "text/csv;charset=utf-8") {
-  const blob = new Blob(["﻿", text], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return saveFile(new Blob(["﻿", text], { type }), filename);
 }

@@ -1,0 +1,246 @@
+/* The apps' first screens: Connect, the iPhone "Add to Home Screen" steps, and the
+   clinic shown above the sign-in form. */
+html[data-app] .login {
+  padding:
+    max(24px, var(--sa-top))
+    calc(16px + var(--sa-right))
+    max(24px, var(--sa-bottom))
+    calc(16px + var(--sa-left));
+}
+
+.connect-card .input-wrap .input {
+  padding-right: 52px;
+}
+
+.connect-card .input-wrap .icon-only {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.connect-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--blue-50);
+  box-shadow: inset 0 0 0 1px rgba(36, 99, 208, 0.16);
+  text-align: center;
+  animation: rise var(--t-med) var(--ease);
+}
+
+.connect-badge {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 8px;
+  border-radius: 18px;
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(23, 71, 176, 0.3);
+}
+
+.connect-question {
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+.connect-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.connect-address {
+  color: var(--ink-3);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.recent-servers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.recent-title {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.recent-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.recent-open svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--blue-600);
+}
+
+.recent-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recent-name {
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-host {
+  color: var(--ink-3);
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* iPhone: Add to Home Screen */
+.install-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.install-step {
+  display: grid;
+  grid-template-columns: 28px 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.install-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--blue-600);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.install-glyph {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--glass-solid);
+  color: var(--blue-600);
+  box-shadow: 0 0 0 1px var(--glass-edge), var(--shadow-press);
+}
+
+.install-glyph svg {
+  width: 22px;
+  height: 22px;
+}
+
+.install-dots {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.install-text {
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* The clinic above the sign-in form */
+.clinic-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 6px 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--blue-50);
+  box-shadow: inset 0 0 0 1px rgba(36, 99, 208, 0.18);
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.clinic-chip svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--blue-600);
+}
+
+.clinic-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-button {
+  flex: none;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--blue-700);
+  font-weight: 650;
+}
+
+.link-button:active {
+  background: var(--blue-100);
+}

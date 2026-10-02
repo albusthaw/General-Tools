@@ -1,4 +1,5 @@
-// Start-up: connect, restore the session, then show sign-in or the app.
+// Start-up: connect, restore the session, then show sign-in or the app. The app
+// build (Android app and iPhone web app) starts in app/start.js instead.
 import "@fontsource-variable/source-sans-3/index.css";
 import "@fontsource-variable/source-serif-4/index.css";
 import "./styles/tokens.css";
@@ -18,6 +19,10 @@ const root = document.getElementById("app");
 // The app never runs inside another site's frame.
 if (window.top !== window.self) {
   root.textContent = "";
+} else if (import.meta.env.MODE === "app") {
+  // The Android app and the iPhone web app: connect to a server first. (Checked at
+  // build time, so the website's files never contain the apps' code.)
+  import("./app/start.js").then(({ startMobileApp }) => startMobileApp(root));
 } else if (!isConfigured) {
   renderNotConnected(root);
 } else {

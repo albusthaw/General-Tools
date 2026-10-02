@@ -7,6 +7,7 @@ import { banner, chip, emptyState, loading, pageHead } from "../../components/fe
 import { getSettings, listRecordings, listUsers } from "../../lib/api/admin.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
+import { appHooks } from "../../lib/platform/hooks.js";
 import { dateOnly, dateTime, duration } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
 import { openRecording } from "./recording-player.js";
@@ -154,5 +155,6 @@ export async function renderRecordings(container) {
   } catch {
     intro.textContent = "Audio follows the “Keep audio” setting under AI settings.";
   }
+  appHooks.enhanceList?.(tableBox, { onRefresh: () => load(true) });
   await load(true);
 }
