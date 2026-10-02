@@ -67,9 +67,10 @@ Requests carry no credentials, follow no redirects to other sites (`redirect: "e
 ### 3.3 After connecting
 
 - `web/src/lib/supabase.js` exports a live binding: the website creates the Supabase client from its built-in details at start; the app build creates it after the connection is chosen, before any other call. Each server gets its own sign-in storage name, so sessions never mix.
-- **Change server** (More tab) is refused while audio is still being saved, signs out locally, clears the recording queue for that server, and returns to Connect.
+- **Change server** (More tab) is refused while audio is still being saved. Otherwise it asks once, signs out, and returns to Connect, which then shows the form and the recent servers instead of suggesting the same clinic again.
 - **Connect links**: `io.github.albusthaw.clinicalscribe://connect?server=<link>` opens the Android app with the link filled in. The iPhone web app at `<site>/app/` fills in its own site. In both cases the person still confirms.
-- **Versions**: the app compares its version with the server's. Server older than 1.2.0: "This server needs an update before the apps can connect." App older than the server's minor version (Android): "A newer version of the app is ready." with a download link to `<site>/downloads/clinical-scribe.apk`. The iPhone web app updates itself through its service worker.
+- **Versions**: a server older than 1.2.0 gets "This server needs an update before the apps can connect." The Android app compares its own version with the Android app published on the website (`android_app.version` in the site's `connect.json`), so it only offers an update that can really be downloaded: "Version 1.3.0 of the app is ready." with **Download**. The iPhone web app updates itself through its service worker.
+- **Clinic name**: the confirm screen uses the name the server gives now (`get_public_config`), so a renamed clinic shows at once even when the site's `connect.json` was written earlier.
 
 ### 3.4 The server's answer
 
@@ -82,11 +83,12 @@ Requests carry no credentials, follow no redirects to other sites (`redirect: "e
   "publishable_key": "sb_publishable_…",
   "name": "St Mary's Clinic",
   "version": "1.2.0",
+  "site_url": "https://name.github.io/General-Tools/",
   "app_url": "https://name.github.io/General-Tools/app/"
 }
 ```
 
-The publishable key is public by design (it is already inside the website). The function reads it from the `CS_PUBLISHABLE_KEY` setting that the deploy saves, the name and version from the database, and answers with `Access-Control-Allow-Origin: *`, `Cache-Control: max-age=300` and nothing else. The deploy writes the same content to `connect.json` in the site and in `/app/`.
+The publishable key is public by design (it is already inside the website). The function reads it from the `CS_PUBLISHABLE_KEY` setting that the deploy saves (a secret key there is ignored), the website from `CS_SITE_URL`, the name and version from the database, and answers with `Access-Control-Allow-Origin: *`, `Cache-Control: max-age=300` and nothing else. The deploy writes the same details to `connect.json` in the site and in `/app/`; only the site's file also names the Android download (`android_app`: path, version and size), because that path is relative to the site.
 
 ## 4. Architecture
 
@@ -124,11 +126,16 @@ Clinical Scribe/
 │   │   ├── SecureStore.java          sign-in storage encrypted with an Android Keystore key
 │   │   └── LinkRules.java            checks connect and sign-in return links
 │   ├── app/src/main/res/             adaptive icon, monochrome icon, notification icon, splash, network rules
-│   ├── app/src/test/java/…           JVM unit tests for LinkRules and RecordingNotification
+│   │   ├── FileSaver.java            writes a file to the place picked in "Save to…", in parts
+│   │   └── RecordingText.java        the time shown in the notification
+│   ├── app/src/test/java/…           JVM unit tests for LinkRules, RecordingText and FileSaver rules
 │   └── build.gradle, settings.gradle, variables.gradle, gradle wrapper
 ├── build/
-│   ├── android/build-apk.mjs         app build → Capacitor copy → Gradle → sign → verify → Release/
-│   ├── android/signing.mjs           signing key handling (secrets or a temporary key)
+│   ├── android/build-apk.mjs         app build → Capacitor sync → Gradle (tests, lint) → align → sign → checks → Release/
+│   ├── android/signing.mjs           signing key handling (kept key, new key, or a one-time key)
+│   ├── android/package-check.mjs     checks on the finished app (id, version, permissions, settings, files)
+│   ├── android/release-file.mjs      the Android part of Release/README.txt
+│   ├── deploy/phone-apps.mjs         connect files, Android download and server settings for the apps
 │   └── make-icons.mjs                also draws the Android legacy icons and the iPhone launch images
 ├── supabase/functions/connect/       public connection details
 ├── web/
@@ -157,10 +164,16 @@ No file grows into a "god file": the app frame, each gesture, each sheet type an
 | `decorateDialog(dialog)` | `components/dialog.js` | Turns the dialog into a sheet with a grabber and drag to close |
 | `enhanceList(list, { onRefresh, rowActions })` | History, Templates, People, Audit log | Pull to refresh, swipe actions, long-press menu |
 | `recorderExtras(card)` | `views/scribe/record.js` | Adds the sound ring and the one-hand recorder layout |
-| `onRecordingState(state)` | `lib/recorder/recorder.js` | Starts, updates and stops the Android recording notification; keeps the screen awake |
-| `saveFile(blob, name)` | CSV export, audio download | Android: the system "Save to…" picker |
+| `enhancePicker(select, { title })` | `views/scribe/record.js` | A long choice (the note template) opens a sheet; with 7 or more choices it has a search field |
+| `pageAction(button)` | Templates | The page's main button moves to the top bar ("+" on iPhone) or the floating button (Android) |
+| `beforeRecording()` | `views/scribe/record.js` | Android: explains and asks for the microphone, then notifications |
+| `copied(button)` | copy buttons | The button turns into a green "Copied" tick instead of a toast |
+| `saveFile(blob, name)` | CSV export, audio download | Android: the system "Save to…" screen; the file is sent in parts of 768 KB |
 | `copyText(text)` | `lib/clipboard.js` | Android: native clipboard |
 | `startGoogleSignIn()` | sign-in screen | Android: system browser and return link |
+| `haptic(kind)`, `openExternal(url)` | app frame, update notice | Android: short vibrations; https links open in the phone's browser |
+
+The Android recording notification is not a hook: `app/native/recording.js` watches the recorder itself and starts, updates and stops the notification (and keeps the screen awake until the last part is uploaded). The recording label is never sent to Android.
 
 ### 4.4 Platform detection
 
@@ -213,15 +226,18 @@ No file grows into a "god file": the app frame, each gesture, each sheet type an
 1. `vite build --mode app` into `web/dist/app`.
 2. `npx cap copy android` puts the app build into the Android project.
 3. `gradlew :app:assembleRelease :app:testReleaseUnitTest :app:lintRelease`.
-4. Signs with `apksigner` (v2 and v3 signatures), then checks the signature and the package details (`aapt2 dump badging`): app id, version, permissions, no debuggable flag.
-5. Copies the result to `Release/clinical-scribe.apk`.
+4. Aligns the file and signs it with `apksigner` (v2 and v3 signatures; v1 is not needed from Android 7).
+5. Checks the signature, the package details (`aapt2 dump badging`: app id, version and version code, Android levels, exactly the expected permissions, not debuggable), the compiled settings (no backups, no plain http, network rules present) and the files inside (app pages present; no source maps, iPhone launch images, settings or key files). The app pages are also checked for secrets before they are bundled.
+6. Copies the result to `Release/clinical-scribe.apk` and writes how it was built (version, size, SHA-256, kind of key, date) at the end of `Release/README.txt`. The deploy reads the version from there.
 
 Needs JDK 21, Node 22 and the Android SDK (platform 36, build tools 36). GitHub's Ubuntu runners have all of them.
 
 ### 7.3 Signing key
 
-- Release builds are signed with a key stored in two GitHub secrets: `ANDROID_SIGNING_KEY` (the key file, base64) and `ANDROID_SIGNING_PASSWORD` (at least 16 characters).
-- First time: the owner adds only `ANDROID_SIGNING_PASSWORD` and runs the workflow. It creates a key protected by that password, signs the app with it, and offers the key file as a one-day download from the run page with steps to save it as `ANDROID_SIGNING_KEY`. Later builds use the saved key, so phones accept updates.
+- Release builds are signed with a key stored in two GitHub secrets: `ANDROID_SIGNING_KEY` (the key text) and `ANDROID_SIGNING_PASSWORD` (at least 16 characters, one line, not trivially simple).
+- The key text is the PKCS12 key file encrypted with the password: scrypt (N = 2^17, r = 8, p = 1) makes an AES-256-GCM key, and the text reads `CSK1.<salt>.<iv>.<sealed>`. A plain base64 PKCS12 file made elsewhere is accepted too. Because the repository is public and run downloads are visible to signed-in GitHub users, the key never leaves the run unencrypted.
+- First time: the owner adds only `ANDROID_SIGNING_PASSWORD` and runs the workflow. It creates a key (RSA 4096, valid 30 years) protected by that password, signs the app with it, and offers the key text as a one-day download from the run page with steps to save it as `ANDROID_SIGNING_KEY`. Later builds use the saved key, so phones accept updates; a build with the kept key gives the same signing certificate every time.
+- The key file exists only in a private temporary folder during the build and is deleted afterwards. Passwords reach `keytool` and `apksigner` through environment values, never on the command line or in the log.
 - With no secrets at all, the workflow still builds a working app signed with a one-time key and says that installing a later build will need the old app removed first.
 
 ### 7.4 Workflow
@@ -236,8 +252,8 @@ Needs JDK 21, Node 22 and the Android SDK (platform 36, build tools 36). GitHub'
 `node build/deploy/deploy.mjs` (and the deploy workflow) also:
 - builds the app into `web/dist/app` with the same version;
 - writes `connect.json` to `web/dist/` and `web/dist/app/`;
-- copies `Release/clinical-scribe.apk` to `web/dist/downloads/clinical-scribe.apk` when it exists;
-- saves `CS_PUBLISHABLE_KEY` for the `connect` function, adds `https://localhost` to `CS_ALLOWED_ORIGINS`, and adds the app's return link to the sign-in settings;
+- copies `Release/clinical-scribe.apk` to `web/dist/downloads/clinical-scribe.apk` when it exists (and refuses a file that is not an app);
+- saves `CS_PUBLISHABLE_KEY` and `CS_SITE_URL` for the `connect` function, adds `https://localhost` to `CS_ALLOWED_ORIGINS`, and adds the app's return link to the sign-in settings (also when no website address is given);
 - deploys the `connect` function with the others.
 
 ## 8. Server and website changes
@@ -256,13 +272,13 @@ Needs JDK 21, Node 22 and the Android SDK (platform 36, build tools 36). GitHub'
 
 | Group | What it checks |
 | --- | --- |
-| Unit (Node) | Link tidying, lookup order, answer checks (secret keys refused), version rules, platform detection, connect and return link parsing, "Get the app" rules, app hooks |
-| Server functions (Deno) | The `connect` answer builder never includes anything but public values |
-| Server (local stack) | `connect` answers with the publishable key, name and version, for any origin; clinic name saved and audited; admin-only; app origin accepted by the admin function |
-| Deploy (local stack) | `connect.json` in site and app, app build present, APK copied when present, `CS_PUBLISHABLE_KEY` and the app origin saved, the return link added, the `connect` function deployed |
-| Browser (Playwright) | App build at `/app/`: connect flow with errors and confirm, recent servers, sign in, every tab and admin page inside the app frame; iPhone theme at iPhone sizes (floating tab bar, large titles, install screen in Safari, none when standalone); Android theme through a test stand-in for the native bridge (sheets, swipe actions, pull to refresh, floating button, mini recorder while recording, back gesture, change server); no sideways scrolling from 320 px, no console errors; the website unchanged apart from the phone bar |
-| Android (Gradle) | Java unit tests, Android lint, release build, signature check, package details (app id, version, permissions, not debuggable, no plain http) |
-| On a real phone (cannot run here: no emulator in this environment) | Install, record with the screen off, Pause/Resume from the notification, Google sign-in round trip, Save to… picker |
+| Unit (Node) | Link tidying, lookup order and problems (offline, not found, too old, secret key), answer checks, the server's clinic name winning, version rules, platform detection, connect and return links, recent servers, the published Android app, saving files in parts on Android, the signing key text and plan, the checks on the finished Android app, the Release notes, the deploy's connect files and header files |
+| Server functions (Deno) | The `connect` answer builder gives only public values and never takes a secret key for a public one |
+| Server (local stack) | `connect` answers with the publishable key, version and site for any address and only answers reading; clinic name saved, audited once, admin only, odd names refused |
+| Deploy (local stack) | The secrets for the apps (`CS_PUBLISHABLE_KEY`, `CS_SITE_URL`, the Android app's origin) and the app's return link are saved, and existing sign-in settings are kept |
+| Browser (Playwright) | App build at `/app/`: iPhone in Safari (install steps, the clinic found from the site, link errors, connect, sign in, every tab, the "+" button in the top bar) and from the Home Screen (no install steps, every admin page with the back button, Phone apps with the QR code); Android look (recording with the mini recorder on other tabs, swipe and long-press rename, pull to refresh, floating button, every tab at 320 px without sideways scrolling, Change server with the recent servers); the website's phone offer on iPhone and Android; no unexpected console errors. The Android look runs in Chrome on Android, which uses the same pages and frame as the Android app; the parts that need Android itself are covered by the Android checks and the real-phone list below |
+| Android (Gradle and the build script) | Java unit tests (links, notification time, file rules), Android lint with no issues, release build, signature, a second build with the kept key giving the same certificate, package details, compiled settings and files |
+| On a real phone (cannot run here: no emulator in this environment) | Install, record with the screen off, Pause/Resume from the notification, Google sign-in round trip, Save to… screen, back gesture, updates over an older copy |
 
 ## 10. Build order
 

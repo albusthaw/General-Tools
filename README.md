@@ -8,7 +8,7 @@ A growing collection of small, practical tools. Each tool lives in its own folde
 | --- | --- | --- |
 | YouTube Bulk Publisher | `YT Bulk Publish/` | Publish, rename and update many YouTube Studio videos in one go. |
 | N8N Automation imports | `N8N Automation imports/` | Importable n8n workflows, starting with a clinical decision helper that reads clinical images and emails a report. |
-| Clinical Scribe | `Clinical Scribe/` | Records consultations and writes clinical notes from a chosen template, on your own Supabase project. One-click deploy and upgrade. |
+| Clinical Scribe | `Clinical Scribe/` | Records consultations and writes clinical notes from a chosen template, on your own Supabase project. One-click deploy and upgrade, with an Android app and an iPhone web app. |
 
 More tools will be added over time.
 
@@ -34,14 +34,16 @@ A web app for clinicians. It records a consultation, turns the speech into a tra
 
 It runs on your own Supabase project. The GitHub workflow "Deploy Clinical Scribe" sets up the database, server functions, sign-in settings, the first admin and the web app in one run, and the same run installs upgrades without losing any records. See `Clinical Scribe/README.md` for the step-by-step guide.
 
+The phone apps have every feature of the website, laid out for phones: an Android app (built by the workflow "Build Clinical Scribe Android app" and published with the website) and an iPhone and iPad web app that is added to the Home Screen from Safari. Both connect with the clinic's server link.
+
 ## Repository layout
 
 ```
 General-Tools/
 ├── CLAUDE.md                 short pointer to the Global instruction folder
 ├── Global instruction/       working rules: claude.md, agent.md, design.md, release.md, version control.md
-├── .github/workflows/        builds, tests and the Clinical Scribe deploy
+├── .github/workflows/        builds, tests, the Clinical Scribe deploy and its Android app build
 ├── YT Bulk Publish/          Windows tool for YouTube Studio
 ├── N8N Automation imports/   importable n8n workflow files
-└── Clinical Scribe/          clinical note web app on Supabase
+└── Clinical Scribe/          clinical note web app on Supabase, with phone apps
 ```

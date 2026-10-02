@@ -79,7 +79,7 @@ Later launches go straight to the Scribe tab (or to Sign in when the session has
 - Field **Server link**, with a **Paste** button inside the field. Hint under the field: "Ask your administrator for this link."
 - Primary button **Connect**.
 - When the link works, a confirmation card replaces the form: the clinic name in large type (or the server's address when no name is set), the address in small type below, then **Connect** (primary) and **Use another link** (quiet).
-- **Recent servers** list under the form when the person has used other servers before. One tap reconnects; swipe to remove.
+- **Recent servers** list under the form when the person has used other servers before. One tap reconnects; the × button removes one. After **Change server**, Connect shows this form straight away instead of suggesting the same clinic again.
 - The iPhone web app opened from a clinic's own site, or the Android app opened from a connect link, shows the confirmation card at once with that clinic filled in. The person still confirms with one tap.
 - Errors appear under the field in plain words (section 10).
 
@@ -169,7 +169,8 @@ A page under **Admin settings** that helps an admin give the apps to staff:
 | Sheet | Slides up from the bottom; grabber (iPhone) or drag handle (Android); drag down or tap the dimmed page to close; half height and full height. Focus stays inside; Escape and the Android back gesture close it. Replaces dialogs inside the apps. |
 | Mini recorder | Glass capsule above the tab bar while a recording is running and the Scribe tab is not open: red dot, "Recording 03:21" (or "Paused"), Pause or Resume button. Tap anywhere else on it to return to Scribe. |
 | Floating action button (Android) | 56 px rounded square, primary gradient, icon plus label when extended; shrinks to the icon while scrolling down. |
-| Swipe row | Swipe left to reveal actions; a full swipe triggers the first action; actions are also reachable by long press and by keyboard, so nothing depends on swiping alone. |
+| Swipe row | Swipe left to reveal actions; nothing happens until an action is tapped, so a long swipe never deletes by accident. The click the browser sends for the swipe or long press itself is dropped; the next tap always works. Actions are also in the long-press menu and on the item's own page, so nothing depends on swiping alone. |
+| List picker | A long choice, such as the note template, opens a sheet instead of a small drop-down list. With 7 or more choices the sheet is tall and has a search field. |
 | Pull to refresh | Pull down at the top of a list; a spinner appears and the list reloads; a short vibration on Android when the pull is far enough. |
 | Copy button | Turns into a tick with "Copied" for 1.5 seconds. |
 | Segmented control | Sliding thumb (iPhone glass, Android tonal with a tick). |
@@ -234,7 +235,7 @@ All new text follows `design.md` section 11. The new phrases:
 | Connect title, field, hint, button | Connect · Server link · Ask your administrator for this link. · Connect |
 | Confirm | Connect to St Mary's Clinic? · Connect · Use another link |
 | Connect errors | Enter the server link. · That link does not look right. Check it and try again. · Links must start with https://. · No Clinical Scribe server was found at that link. · The server cannot be reached. Check your internet connection and try again. · This server needs an update before the apps can connect. Ask your administrator. |
-| More | Connected to · Change server · Version · Get the newest version · Sign out |
+| More | Connected to · Change server · Version · Get version 1.3.0 (only when a newer Android app is published) · Sign out |
 | Change server sheet | Change server? · You will be signed out of St Mary's Clinic on this phone. · Change server · Cancel |
 | Recorder hints | Recording carries on when the screen is off. (Android) · Keep Clinical Scribe open while recording. (iPhone) |
 | Notification | Recording · Paused · Pause · Resume |
@@ -252,7 +253,7 @@ Words we never show: API, key (except "service key" on admin pages), endpoint, U
 
 - Everything in `design.md` section 10 applies.
 - Touch targets: at least 48 × 48 px on Android and 44 × 44 px on iPhone; the record button is never smaller than 112 px.
-- Gestures always have a visible alternative: swipe actions are also in the long-press menu and the row's "⋯" button; pull to refresh also happens on returning to the tab.
+- Gestures always have a visible alternative: swipe actions are also in the long-press menu and on the item's own page; pull to refresh also happens on returning to the tab.
 - The sound ring and wavy line are decoration; screen readers hear the state ("Recording, 3 minutes 21 seconds") instead.
 - Large text: layouts reflow up to 200 % text size; tab labels shorten never, they wrap or the bar grows.
 - Reduced motion: no tab bar minimising, no breathing ring, no parallax; changes fade instead.
