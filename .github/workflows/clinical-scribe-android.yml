@@ -1,0 +1,133 @@
+name: Build Clinical Scribe Android app
+
+# Builds the Android app from the web app and the Android project, runs the
+# Android tests and checks, and signs the app. It runs when the app changes
+# (build and checks only), or by hand from the Actions tab, where it can also
+# save the app into "Clinical Scribe/Release" on the same branch; the deploy then
+# publishes it with the website. The signing key comes from the secrets
+# ANDROID_SIGNING_KEY and ANDROID_SIGNING_PASSWORD ("Clinical Scribe/README.md"
+# explains them). The save commit carries "[skip ci]" so it never starts itself.
+on:
+  workflow_dispatch:
+    inputs:
+      save_app:
+        description: "Save the signed app into the Release folder"
+        type: boolean
+        default: true
+  push:
+    paths:
+      - "Clinical Scribe/web/**"
+      - "Clinical Scribe/android/**"
+      - "Clinical Scribe/build/android/**"
+      - "Clinical Scribe/VERSION"
+      - ".github/workflows/clinical-scribe-android.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-clinical-scribe-android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, check and sign the app
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: Clinical Scribe
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Clinical Scribe/web/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            Clinical Scribe/android/*.gradle
+            Clinical Scribe/android/app/*.gradle
+            Clinical Scribe/android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Add the Android platform and build tools
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      - name: Install the web app's packages
+        run: npm ci --prefix web --no-audit --no-fund
+
+      - name: Run the quick checks
+        run: node --test tests/unit/*.test.mjs
+
+      - name: Build the app
+        id: build
+        env:
+          ANDROID_SIGNING_KEY: ${{ secrets.ANDROID_SIGNING_KEY }}
+          ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_SIGNING_PASSWORD }}
+        run: node build/android/build-apk.mjs
+
+      - name: Keep the app as a download on this page
+        uses: actions/upload-artifact@v6
+        with:
+          name: clinical-scribe-android
+          path: |
+            Clinical Scribe/Release/clinical-scribe.apk
+            Clinical Scribe/Release/README.txt
+          retention-days: 14
+          if-no-files-found: error
+
+      # Only when a new key was made: the key, encrypted with the password secret,
+      # for the owner to keep as the ANDROID_SIGNING_KEY secret. Kept for one day.
+      - name: Offer the new signing key for one day
+        if: steps.build.outputs.new_key == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-signing-key
+          path: Clinical Scribe/android/build/signing-key/ANDROID_SIGNING_KEY.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  save:
+    name: Save the app into the Release folder
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.save_app
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Take the built app
+        uses: actions/download-artifact@v7
+        with:
+          name: clinical-scribe-android
+          path: Clinical Scribe/Release
+
+      - name: Commit the app
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "Clinical Scribe/Release/clinical-scribe.apk" "Clinical Scribe/Release/README.txt"
+          if git diff --cached --quiet; then echo "The app did not change."; exit 0; fi
+          git commit -m "Build Clinical Scribe Android app [skip ci]"
+          # Other commits may have landed while the build ran; put this one on top.
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"

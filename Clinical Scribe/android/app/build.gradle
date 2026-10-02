@@ -1,0 +1,61 @@
+apply plugin: 'com.android.application'
+
+// The app version comes from the VERSION file at the top of the tool, so the
+// website, the server and the Android app always carry the same number.
+def appVersion = rootProject.file('../VERSION').text.trim()
+if (!(appVersion ==~ /\d+\.\d+\.\d+/)) {
+    throw new GradleException("VERSION must look like 1.2.0, not '${appVersion}'")
+}
+def versionParts = appVersion.tokenize('.').collect { it.toInteger() }
+
+android {
+    namespace = "io.github.albusthaw.clinicalscribe"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "io.github.albusthaw.clinicalscribe"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+        versionName appVersion
+    }
+    androidResources {
+        // Files and folders left out of the bundled app pages. The iPhone launch
+        // images (launch/) are only used by the iPhone web app.
+        ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!<dir>launch'
+    }
+    buildTypes {
+        release {
+            // Signed afterwards by build/android/build-apk.mjs.
+            minifyEnabled false
+        }
+    }
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+        // Library versions move forward together with Capacitor.
+        disable += ['GradleDependency', 'NewerVersionAvailable', 'AndroidGradlePluginVersion']
+    }
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+}
+
+repositories {
+    flatDir {
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core:$androidxCoreVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    implementation project(':capacitor-cordova-android-plugins')
+    testImplementation "junit:junit:$junitVersion"
+}
+
+apply from: 'capacitor.build.gradle'

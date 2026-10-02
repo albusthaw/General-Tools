@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Written by "npx cap sync" for older plugin types; this app has none. -->
+    <issue id="UnusedResources">
+        <ignore path="src/main/res/xml/config.xml" />
+    </issue>
+</lint>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch screen icon: the brand mark in the middle of the screen. Android draws
+     launch icons at 288dp, so the usual size advice for vector icons does not apply. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="VectorRaster"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+    <group
+        android:scaleX="2.25"
+        android:scaleY="2.25"
+        android:translateX="72"
+        android:translateY="72">
+        <path android:pathData="M16,0h32a16,16 0,0 1,16 16v32a16,16 0,0 1,-16 16h-32a16,16 0,0 1,-16 -16v-32a16,16 0,0 1,16 -16z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="0"
+                    android:startY="0"
+                    android:endX="64"
+                    android:endY="64">
+                    <item android:offset="0" android:color="#FF1747B0" />
+                    <item android:offset="1" android:color="#FF2F7BE0" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path android:pathData="M14,29v6M22,22v20M30,16v32M38,24v16M46,19v26M54,29v6"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round"
+            android:strokeWidth="4.2" />
+    </group>
+</vector>
