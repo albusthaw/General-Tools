@@ -122,7 +122,7 @@ A phone installs an update only when it is signed with the same key as the app i
 3. The run makes a new key. On the run page, under **Artifacts**, download **android-signing-key** (it is kept for one day). Open the file inside, copy all of its text and save it as the repository secret `ANDROID_SIGNING_KEY`. Then delete the downloaded file.
 4. Later builds use this key, so phones accept every update. Keep both secrets: without them, phones must remove the app before they can install a new build.
 
-The key text is encrypted with your password, so it is useless on its own. Without any secrets the workflow still builds a working app, signed with a one-time key; phones must remove that app before installing a later build. The copy in this repository's `Release` folder was built that way.
+The key text is encrypted with your password, so it is useless on its own. Without any secrets the workflow still builds a working app, signed with a one-time key; phones must remove that app before installing a later build. `Release/README.txt` says which version is in the `Release` folder and how it was signed.
 
 ### Clinic name
 
