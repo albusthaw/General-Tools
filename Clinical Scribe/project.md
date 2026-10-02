@@ -105,7 +105,7 @@ Supabase does not serve web pages from its default address: Edge Functions rewri
 2. `MediaRecorder` records Opus in WebM (Chrome, Edge, Firefox, Android) or AAC in MP4 (Safari, iPhone) at 32 kbit/s, which is clear for speech and small (about 14 MB per hour).
 3. Every 5 seconds the newest audio chunk is written to IndexedDB, so a crash or closed tab loses at most a few seconds.
 4. Every 10 minutes the recorder starts a fresh part (a new, self-contained file) and the finished part is uploaded to `recordings/<user>/<scribe>/<part>.webm`, then registered with `register_segment` (RPC), which checks that the file really exists in Storage and belongs to the caller.
-5. Pause and Resume use `MediaRecorder.pause()`/`resume()`. The screen is kept awake with the Wake Lock API while recording.
+5. Pause and Resume use `MediaRecorder.pause()`/`resume()`. A call, other sound, a muted or stopped microphone, sound played by the app and, on iPhone, a locked screen also pause the recording and never end it: the recorder says why, and Resume carries on in a new part, opening the microphone again when needed. The screen is kept awake with the Wake Lock API while recording. The Android app records with its own recorder instead (`appproject.md`, section 5.1).
 6. Finish uploads the last part and calls `finish_scribe` (RPC). Failed uploads are retried with back-off and kept in IndexedDB until they succeed, even across a reload. If the tab closes before the last upload finishes, the app finishes the job the next time it is opened.
 
 ### 4.2 On the server
@@ -284,7 +284,7 @@ Each module has one job. Screens talk to the server only through `lib/api/*.js`.
 - **Security checks**: the deploy scans the built web app for keys and tokens before anything is published; the server tests try to read other people's data and to change the audit log with user tokens.
 
 ## 11. Known limits
-- iPhones stop recording when the screen locks or the browser moves to the background. The app keeps the screen awake and asks the user to keep the page open while recording. Audio already saved is never lost.
+- iPhones stop the microphone of a web page when the screen locks or the browser moves to the background. The recording then pauses and keeps everything; the iPhone web app's Screen off keeps recording with a dark screen (`appproject.md`, section 5.1). Audio already saved is never lost.
 - Speaker labels from the transcription services are generic ("Speaker 1") and may switch numbering between 10-minute parts; the note AI is told to work out who is the clinician and who is the patient from the content.
 - Very large organisations should raise the Supabase plan limits (storage, function time) and the AI service plan limits (ElevenLabs concurrency).
 - The tool supports clinical documentation; it does not replace clinical judgement. Notes must be checked before use.
