@@ -26,8 +26,10 @@ export const ADMIN_LINKS = [
   { name: "admin-audit", path: "/admin/audit", label: "Audit log", icon: "scroll" },
   { name: "admin-google", path: "/admin/google", label: "Google sign-in", icon: "globe" },
   { name: "admin-email", path: "/admin/email", label: "Email (SMTP)", icon: "mail" },
-  { name: "admin-apps", path: "/admin/apps", label: "Phone apps", icon: "phone" },
 ];
+
+// For everyone: in the side menu on the website, in More in the apps.
+export const APPS_LINK = { name: "apps", path: "/apps", label: "Phone apps", icon: "phone" };
 
 function tabName(route) {
   return route.name === "history-detail" ? "history" : route.name;
@@ -94,6 +96,7 @@ export function mountShell(root, { onSignOut }) {
       "nav",
       { class: "nav", attrs: { "aria-label": "Sections" } },
       navLink({ name: "scribe-module", path: "/scribe", label: "Clinical Scribe", icon: "mic" }),
+      navLink(APPS_LINK),
       admin ? h("p", { class: "nav-heading", text: "Admin settings" }) : null,
       admin ? ADMIN_LINKS.map(navLink) : null,
     ),

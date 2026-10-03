@@ -33,6 +33,7 @@ export function installAppHooks({ platform, native }) {
     appHooks.startGoogleSignIn = native.startGoogleSignIn;
     appHooks.beforeRecording = native.beforeRecording;
     appHooks.openExternal = native.openExternal;
+    appHooks.vibration = native.vibration;
     // Android records by itself, so recording carries on with the screen off.
     appHooks.createCapture = native.createCapture;
     appHooks.findPhoneRecording = native.findRecording;

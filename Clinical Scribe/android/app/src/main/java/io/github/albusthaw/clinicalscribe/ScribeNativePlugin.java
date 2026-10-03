@@ -253,6 +253,18 @@ public class ScribeNativePlugin extends Plugin {
         return "prompt";
     }
 
+    // Vibration
+
+    /** The app's Vibration switch also covers Android's own vibration for long presses in the pages. */
+    @PluginMethod
+    public void setTouchFeedback(PluginCall call) {
+        boolean on = !Boolean.FALSE.equals(call.getBoolean("on", true));
+        getActivity().runOnUiThread(() -> {
+            getBridge().getWebView().setHapticFeedbackEnabled(on);
+            call.resolve();
+        });
+    }
+
     // Sign-in storage
 
     @PluginMethod

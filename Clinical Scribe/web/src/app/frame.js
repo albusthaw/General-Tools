@@ -25,7 +25,7 @@ const APP_VIEWS = { ...VIEWS, more: renderMore };
 /** Pages that slide in over a tab, and where their back button leads. */
 export function parentOf(route) {
   if (route.name === "history-detail") return { path: "/history", label: "History" };
-  if (route.admin) return { path: "/more", label: "More" };
+  if (route.admin || route.fromMore) return { path: "/more", label: "More" };
   return null;
 }
 

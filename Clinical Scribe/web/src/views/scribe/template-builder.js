@@ -1,10 +1,11 @@
 // Template builder: describe the note, let the template helper draft it, review,
 // ask for changes or edit, then save. Used for personal templates and, by
-// admins, for shared templates.
+// admins, for shared templates. With scope "ask" (admins on the Templates tab),
+// the admin chooses who can use the new template; everyone is chosen first.
 import { button, withBusy } from "../../components/button.js";
 import { openDialog } from "../../components/dialog.js";
 import { toast } from "../../components/feedback.js";
-import { textArea, textField } from "../../components/fields.js";
+import { fieldGroup, segmented, textArea, textField } from "../../components/fields.js";
 import { draftTemplate, reviseTemplate, saveTemplate } from "../../lib/api/templates.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
@@ -19,6 +20,17 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
     body: [content],
     wide: true,
   });
+  let chosenScope = scope === "ask" ? "shared" : scope;
+
+  // Only when creating, and only for admins on the Templates tab.
+  const scopeChoice = () => {
+    if (existing || scope !== "ask") return null;
+    const control = segmented("Who can use this template?", [
+      { value: "shared", label: "Everyone in the clinic" },
+      { value: "personal", label: "Only me" },
+    ], { value: chosenScope, onChange: (value) => (chosenScope = value) });
+    return fieldGroup("Who can use this template?", control.el, "A template for everyone appears for all staff straight away. Only admins can change it.");
+  };
 
   let request = existing?.source_request ?? "";
   let draft = existing ? { name: existing.name, description: existing.description ?? "", body: existing.body } : null;
@@ -50,6 +62,7 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
     replace(
       content,
       h("p", { class: "builder-intro", text: "Describe the note in your own words. A detailed template will be drafted for you to check and change before saving." }),
+      scopeChoice(),
       description.el,
       error,
       h("div", { class: "builder-foot" }, button("Cancel", { onClick: () => dialog.close() }), go),
@@ -101,9 +114,9 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
             description: description.value(),
             body: body.input.value.trim(),
             sourceRequest: request,
-            scope: existing?.scope ?? scope,
+            scope: existing?.scope ?? chosenScope,
           });
-          toast(existing ? "The template is saved." : "The template has been created.");
+          toast(existing ? "The template is saved." : chosenScope === "shared" ? "The template is ready for everyone in the clinic." : "The template has been created.");
           dialog.close();
           onSaved?.(id);
         } catch (err) {
@@ -114,6 +127,7 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
 
     replace(
       content,
+      scopeChoice(),
       h("div", { class: "form-grid" }, name.el, description.el),
       body.el,
       h("div", { class: "builder-changes" }, h("h3", {}, icon("pencil"), h("span", { text: "Want something different?" })), changes.el, h("div", { class: "btn-row" }, update)),

@@ -10,6 +10,7 @@
 //   secureGet({ key }), secureSet({ key, value }), secureRemove({ key })
 //   saveFileStart({ name, mimeType }) → { saved, token }, then saveFileWrite({ token, data }) for
 //   each base64 part, then saveFileFinish({ token }), or saveFileCancel({ token }) on a problem
+//   setTouchFeedback({ on }) lets the app's pages vibrate on long presses, or not
 import { registerPlugin } from "@capacitor/core";
 
 export const ScribeNative = registerPlugin("ScribeNative");

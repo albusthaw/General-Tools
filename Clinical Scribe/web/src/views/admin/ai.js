@@ -4,7 +4,7 @@ import { button, withBusy } from "../../components/button.js";
 import { banner, chip, loading, pageHead, toast } from "../../components/feedback.js";
 import { fieldGroup, segmented, selectField, switchRow } from "../../components/fields.js";
 import { config } from "../../config.js";
-import { getSettings, modelCatalog, refreshModels, testModels, updateSettings, usageSummary } from "../../lib/api/admin.js";
+import { checkZeroRetention, getSettings, modelCatalog, refreshModels, testModels, updateSettings, usageSummary } from "../../lib/api/admin.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { relative } from "../../lib/format.js";
@@ -79,8 +79,35 @@ function transcriptionCard(s, models) {
   });
   const eleven = models.picker("ElevenLabs model", "elevenlabs", "transcription", s.elevenlabs_model);
   const gemini = models.picker("Gemini model", "gemini", "transcription", s.gemini_transcription_model);
-  const zero = switchRow("Ask ElevenLabs not to keep recordings", { description: "Zero retention. Only some ElevenLabs plans allow it; others will refuse the recording.", checked: s.elevenlabs_zero_retention });
-  const elevenBox = h("div", { class: "stack" }, eleven.el, zero.el);
+  const zero = switchRow("Ask ElevenLabs not to keep recordings", {
+    description: "Zero retention: ElevenLabs keeps no copy of the audio or the transcript. ElevenLabs allows it only for Enterprise accounts, so it is checked with ElevenLabs when you switch it on.",
+    checked: s.elevenlabs_zero_retention,
+  });
+  // Switching it on asks ElevenLabs first; an account that refuses it keeps it off.
+  const zeroNote = h("p", { class: "field-hint", attrs: { role: "status" } });
+  let checking = false;
+  zero.input.addEventListener("change", async () => {
+    zeroNote.textContent = "";
+    zeroNote.classList.remove("field-error");
+    if (!zero.input.checked) return;
+    checking = true;
+    zero.input.disabled = true;
+    zeroNote.textContent = "Checking with ElevenLabs…";
+    try {
+      const result = await checkZeroRetention(eleven.value());
+      zero.input.checked = Boolean(result?.ok);
+      zeroNote.textContent = result?.message ?? "";
+      zeroNote.classList.toggle("field-error", !result?.ok);
+    } catch (error) {
+      zero.input.checked = false;
+      zeroNote.textContent = messageOf(error);
+      zeroNote.classList.add("field-error");
+    } finally {
+      checking = false;
+      zero.input.disabled = false;
+    }
+  });
+  const elevenBox = h("div", { class: "stack" }, eleven.el, zero.el, zeroNote);
   const geminiBox = h("div", { class: "stack" }, gemini.el);
   elevenBox.hidden = provider !== "elevenlabs";
   geminiBox.hidden = provider !== "gemini";
@@ -93,6 +120,10 @@ function transcriptionCard(s, models) {
     children: [fieldGroup("Service", providerControl.el, "Credit is counted separately for each service."), elevenBox, geminiBox, language.el],
     onSave: () => {
       if (!eleven.validate() || !gemini.validate()) return null;
+      if (checking) {
+        toast("Wait until ElevenLabs has answered, then save.", "bad");
+        return null;
+      }
       return {
         transcription_provider: provider,
         elevenlabs_model: eleven.value(),

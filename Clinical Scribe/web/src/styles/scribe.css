@@ -283,6 +283,37 @@
   box-shadow: var(--shadow-card), 0 0 0 2px rgba(22, 122, 82, 0.45);
 }
 
+/* Notes in History open and close */
+.note-card .note-title {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.note-card.folds .card-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-card.is-closed .card-head {
+  margin-bottom: 0;
+}
+
+.section-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.section-row .section-title {
+  margin: 0 2px;
+}
+
 .writing {
   display: flex;
   align-items: center;
@@ -381,6 +412,46 @@
 .btn-row.center {
   justify-content: center;
   margin-top: 16px;
+}
+
+.search-count {
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.search-count:empty {
+  display: none;
+}
+
+.list-row .row-extract {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.row-extract mark {
+  padding: 0 2px;
+  border-radius: 4px;
+  background: rgba(245, 184, 0, 0.32);
+  color: inherit;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.pager-text {
+  color: var(--ink-2);
+  font-size: 14.5px;
+  font-weight: 600;
 }
 
 .back-link {
@@ -620,10 +691,12 @@
   }
 
   .note-card .card-head > .btn,
+  .note-card .card-head .btn-row,
   .transcript-card .card-head .btn-row {
     width: 100%;
   }
 
+  .note-card .card-head .btn-row .btn,
   .transcript-card .card-head .btn-row .btn {
     flex: 1;
   }

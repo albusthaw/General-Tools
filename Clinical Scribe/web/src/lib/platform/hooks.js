@@ -15,6 +15,7 @@
 //   findPhoneRecording() → Promise<state|null> a recording the phone kept while the page was closed
 //   recoverPhoneParts(options) → Promise     queue parts the phone kept after a crash
 //   haptic(kind)                             short vibration (Android)
+//   vibration → { isOn(), set(on) }          the Vibration switch in More (Android)
 //   openExternal(address)                    open a web address in the phone's browser
 //   copied(button)                           show that a copy button worked
 export const appHooks = {};

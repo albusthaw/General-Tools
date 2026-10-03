@@ -33,6 +33,7 @@ export const saveTemplate = ({ id = null, name, description, body, sourceRequest
 export const deleteTemplate = (id) => call("delete_template", { p_id: id });
 export const restoreTemplate = (id) => call("restore_template", { p_id: id });
 export const setDefaultTemplate = (id) => call("set_default_template", { p_id: id });
+export const shareTemplate = (id) => call("share_template", { p_id: id });
 
 async function helper(body) {
   const { data, error } = await supabase.functions.invoke("templates-ai", { body });

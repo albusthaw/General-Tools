@@ -4,11 +4,11 @@ import { UserError } from "../errors.js";
 
 // Answers that mean the server will never accept this part (the recording was
 // finished elsewhere or deleted), so the part is dropped instead of retried.
-const PART_FINAL = new Set(["not_found", "not_recording", "invalid_input", "too_large", "not_allowed"]);
+const PART_FINAL = new Set(["not_found", "not_recording", "invalid_input", "too_large", "too_long", "not_allowed"]);
 
 // Reasons for not finishing a recording that trying again will not change.
 // Anything else (no connection, parts still arriving) is retried.
-const FINISH_REFUSED = new Set(["not_enough_credit", "too_short", "not_set_up", "not_found", "not_allowed", "unsupported_audio"]);
+const FINISH_REFUSED = new Set(["not_enough_credit", "too_short", "too_long", "not_set_up", "not_found", "not_allowed", "unsupported_audio"]);
 
 // "<user>/<recording>/0003.webm"
 export function partPath(part) {

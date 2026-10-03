@@ -1,16 +1,18 @@
 // The More tab: the person's details and password, the server the app is
-// connected to, the admin settings for admins, the app version and Sign out.
+// connected to, the admin settings for admins, Phone apps, the Vibration switch
+// on Android, the app version and Sign out.
 import { chip, pageHead } from "../components/feedback.js";
 import { config } from "../config.js";
 import { currentConnection, displayName } from "../lib/connection/store.js";
 import { h, replace } from "../lib/dom.js";
 import { initials } from "../lib/format.js";
 import { icon } from "../lib/icons.js";
+import { appHooks } from "../lib/platform/hooks.js";
 import { href } from "../lib/router.js";
 import { isAdmin, profile } from "../lib/store.js";
 import { openAccountDialog, openPasswordDialog } from "../views/account.js";
 import { requestSignOut } from "../views/app.js";
-import { ADMIN_LINKS } from "../views/shell.js";
+import { ADMIN_LINKS, APPS_LINK } from "../views/shell.js";
 import { changeServer } from "./server-switch.js";
 import { newerApp, openApp } from "./update.js";
 
@@ -23,6 +25,32 @@ function row({ label, iconName, detail = "", href: target = null, onClick = null
   return target
     ? h("a", { class: ["more-row", kind], href: target }, inner)
     : h("button", { type: "button", class: ["more-row", kind], onClick }, inner);
+}
+
+// Android only: the app's short vibrations, on at first.
+function vibrationRow(control) {
+  const input = h("input", {
+    type: "checkbox",
+    id: "more-vibration",
+    checked: control.isOn(),
+    attrs: { role: "switch", "aria-describedby": "more-vibration-detail" },
+    onChange: () => {
+      control.set(input.checked);
+      if (input.checked) appHooks.haptic?.("light");
+    },
+  });
+  return h(
+    "div",
+    { class: "more-row more-switch" },
+    h("span", { class: "more-icon" }, icon("vibrate")),
+    h(
+      "label",
+      { class: "more-text", attrs: { for: "more-vibration" } },
+      h("span", { class: "more-label", text: "Vibration" }),
+      h("span", { class: "more-detail", attrs: { id: "more-vibration-detail" }, text: "Short vibrations when you start, pause or finish a recording" }),
+    ),
+    h("span", { class: "switch" }, input, h("span")),
+  );
 }
 
 function group(title, rows) {
@@ -39,7 +67,11 @@ export function renderMore(container) {
   const me = profile();
   const admin = isAdmin();
   const connection = currentConnection();
-  const appGroup = group("App", [row({ label: "Version", iconName: "info", detail: config.appVersion, kind: "info" })]);
+  const appGroup = group("App", [
+    row({ label: APPS_LINK.label, iconName: APPS_LINK.icon, href: href(APPS_LINK.path) }),
+    appHooks.vibration ? vibrationRow(appHooks.vibration) : null,
+    row({ label: "Version", iconName: "info", detail: config.appVersion, kind: "info" }),
+  ]);
   newerApp().then((app) => {
     if (app && appGroup.isConnected) {
       appGroup.querySelector(".more-list").append(row({ label: `Get version ${app.version}`, iconName: "download", onClick: () => openApp(app), kind: "accent" }));

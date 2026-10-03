@@ -407,6 +407,10 @@ button.more-row:active {
   color: var(--bad);
 }
 
+.more-switch .more-text {
+  cursor: pointer;
+}
+
 .more-signout {
   margin-top: 24px;
 }
