@@ -18,6 +18,7 @@ const ROUTES: Record<string, AdminAction> = {
   "keys.save": keys.save,
   "keys.remove": keys.remove,
   "keys.check": keys.check,
+  "keys.check_zero_retention": keys.checkZeroRetention,
   "models.catalog": models.catalog,
   "models.refresh": models.refresh,
   "models.test": models.test,

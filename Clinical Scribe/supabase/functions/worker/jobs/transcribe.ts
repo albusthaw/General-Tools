@@ -1,4 +1,7 @@
 // Transcribes one audio part with the service chosen when the recording finished.
+// Before any service is paid, the part's real length is measured from the file and
+// the minutes are settled for it (svc_segment_measured).
+import { audioSeconds } from "../../_shared/audio-length.ts";
 import { ProviderError } from "../../_shared/errors.ts";
 import * as elevenlabs from "../../_shared/providers/elevenlabs.ts";
 import * as gemini from "../../_shared/providers/gemini.ts";
@@ -21,6 +24,7 @@ interface Segment {
   status: string;
   transcript: string | null;
   provider_duration_seconds: number | null;
+  measured_seconds: number | null;
   audio_deleted: boolean;
 }
 
@@ -51,7 +55,7 @@ export async function transcribeSegment(job: Job, ctx: JobContext): Promise<Outc
   const db = adminClient();
   const { data: segment } = await db
     .from("scribe_segments")
-    .select("id, scribe_id, seq, storage_path, mime_type, duration_seconds, status, transcript, provider_duration_seconds, audio_deleted")
+    .select("id, scribe_id, seq, storage_path, mime_type, duration_seconds, status, transcript, provider_duration_seconds, measured_seconds, audio_deleted")
     .eq("id", job.segment_id)
     .maybeSingle<Segment>();
   const { data: scribe } = segment
@@ -82,26 +86,59 @@ export async function transcribeSegment(job: Job, ctx: JobContext): Promise<Outc
   }
 
   await rpc("svc_segment_started", { p_segment_id: segment.id });
+
+  // A part is measured once; a later attempt or "Try again" uses the saved length.
+  let audio: Blob | null = null;
+  if (segment.measured_seconds === null) {
+    audio = await downloadAudio(segment.storage_path);
+    const seconds = audioSeconds(new Uint8Array(await audio.arrayBuffer()), segment.mime_type);
+    const verdict = await rpc<string>("svc_segment_measured", {
+      p_segment_id: segment.id,
+      p_measured: seconds,
+      p_byte_size: audio.size,
+    });
+    if (verdict === "gone") {
+      await rpc("svc_job_done", { p_id: job.id, p_worker: ctx.workerId });
+      return FINISHED;
+    }
+    if (verdict !== "ok") {
+      throw new JobError(`Part ${segment.seq} refused when measured: ${verdict} (${seconds ?? "no"} seconds).`, MEASURE_MESSAGES[verdict] ?? MEASURE_MESSAGES.unreadable, false);
+    }
+  }
+
   return scribe.provider === "elevenlabs"
-    ? await withElevenLabs(job, ctx, segment, scribe)
-    : await withGemini(job, ctx, segment, scribe);
+    ? await withElevenLabs(job, ctx, segment, scribe, audio)
+    : await withGemini(job, ctx, segment, scribe, audio);
 }
 
-async function withElevenLabs(job: Job, ctx: JobContext, segment: Segment, scribe: ScribeInfo): Promise<Outcome> {
+// What the person sees when a part cannot be processed for its length.
+const MEASURE_MESSAGES: Record<string, string> = {
+  not_enough_credit: "There are not enough transcription minutes for the real length of this recording. Ask your administrator to add more, then use Try again.",
+  too_long: "This recording is longer than the longest recording allowed, so it was not processed.",
+  changed: "The audio of this recording changed after it was saved, so it was not processed.",
+  unreadable: "The length of this recording's audio could not be checked, so it was not processed. Please record again.",
+};
+
+async function withElevenLabs(job: Job, ctx: JobContext, segment: Segment, scribe: ScribeInfo, downloaded: Blob | null): Promise<Outcome> {
   const apiKey = await getSecret("elevenlabs_api_key");
   if (!apiKey) throw new ProviderError("not_set_up", "elevenlabs", "No ElevenLabs key saved.");
 
-  const audio = await downloadAudio(segment.storage_path);
+  const audio = downloaded ?? await downloadAudio(segment.storage_path);
   const extension = segment.storage_path.split(".").pop() ?? "webm";
-  const result = await elevenlabs.transcribe({
-    apiKey,
-    audio,
-    filename: `part-${segment.seq}.${extension}`,
-    model: scribe.model,
-    language: scribe.language,
-    zeroRetention: scribe.zero_retention,
-    timeoutMs: Math.max(30_000, Math.min(150_000, ctx.remaining() - 5000)),
-  });
+  let result: elevenlabs.ElevenLabsResult;
+  try {
+    result = await elevenlabs.transcribe({
+      apiKey,
+      audio,
+      filename: `part-${segment.seq}.${extension}`,
+      model: scribe.model,
+      language: scribe.language,
+      zeroRetention: scribe.zero_retention,
+      timeoutMs: Math.max(30_000, Math.min(150_000, ctx.remaining() - 5000)),
+    });
+  } catch (error) {
+    throw scribe.zero_retention ? await elevenlabs.explainRefusal(error, apiKey, scribe.model) : error;
+  }
   const transcript = buildSpeakerTranscript(
     result.words.map((word) => ({ text: word.text, type: word.type, speaker: word.speaker_id ?? null })),
     result.text,
@@ -143,7 +180,7 @@ function transcriptionBody(model: string, uri: string, mime: string, language: s
   };
 }
 
-async function withGemini(job: Job, ctx: JobContext, segment: Segment, scribe: ScribeInfo): Promise<Outcome> {
+async function withGemini(job: Job, ctx: JobContext, segment: Segment, scribe: ScribeInfo, downloaded: Blob | null): Promise<Outcome> {
   const apiKey = await getSecret("gemini_api_key");
   if (!apiKey) throw new ProviderError("not_set_up", "gemini", "No Gemini key saved.");
   const mime = gemini.geminiMime(segment.mime_type);
@@ -151,7 +188,7 @@ async function withGemini(job: Job, ctx: JobContext, segment: Segment, scribe: S
 
   try {
     if (typeof state.file_name !== "string") {
-      const audio = await downloadAudio(segment.storage_path);
+      const audio = downloaded ?? await downloadAudio(segment.storage_path);
       const file = await gemini.uploadFile(apiKey, audio, mime, `clinical-scribe-part-${segment.seq}`, 90_000);
       state = { file_name: file.name, file_uri: file.uri, file_ready: file.state === "ACTIVE" || !file.state };
       await ctx.saveState(state);

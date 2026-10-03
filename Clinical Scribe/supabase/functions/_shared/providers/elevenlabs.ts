@@ -34,9 +34,23 @@ export const ELEVENLABS_MODELS = [
   { id: "scribe_v2", label: "Scribe v2", note: "General speech" },
 ];
 
-function speechToTextUrl(zeroRetention: boolean): string {
-  // Zero retention is asked for in the address, not in the form.
+// Zero retention is asked for in the address, not in the form: the query value
+// enable_logging=false on POST /v1/speech-to-text (ElevenLabs API reference).
+// ElevenLabs allows it only for Enterprise accounts and refuses it for others.
+export function speechToTextUrl(zeroRetention: boolean): string {
   return `${serviceBase("elevenlabs")}/v1/speech-to-text${zeroRetention ? "?enable_logging=false" : ""}`;
+}
+
+// When a request with zero retention is refused, the same key and model are tried
+// once without it. If that works, the refusal was about zero retention itself.
+export async function explainRefusal(error: unknown, apiKey: string, model: string): Promise<unknown> {
+  if (!(error instanceof ProviderError) || !(error.kind === "auth" || error.kind === "bad_request" || error.kind === "model")) return error;
+  try {
+    await checkKey(apiKey, model);
+  } catch {
+    return error;
+  }
+  return new ProviderError("retention", "elevenlabs", `Zero retention refused: ${error.message}`, error.status);
 }
 
 export async function transcribe(options: {
@@ -102,12 +116,13 @@ export function silentWav(seconds = 1): Blob {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-// Checks the key (and the chosen model) with a tiny silent clip.
-export async function checkKey(apiKey: string, model: string): Promise<void> {
+// Checks the key (and the chosen model) with a tiny silent clip, with zero
+// retention when asked.
+export async function checkKey(apiKey: string, model: string, zeroRetention = false): Promise<void> {
   const form = new FormData();
   form.append("model_id", model);
   form.append("file", silentWav(1), "check.wav");
-  await send("elevenlabs", speechToTextUrl(false), {
+  await send("elevenlabs", speechToTextUrl(zeroRetention), {
     method: "POST",
     headers: { "xi-api-key": apiKey, Accept: "application/json" },
     body: form,

@@ -6,7 +6,7 @@ import * as deepseek from "../../_shared/providers/deepseek.ts";
 import * as elevenlabs from "../../_shared/providers/elevenlabs.ts";
 import * as gemini from "../../_shared/providers/gemini.ts";
 import { getSecret, type SecretName } from "../../_shared/secrets.ts";
-import { rpc } from "../../_shared/supabase.ts";
+import { adminClient, rpc } from "../../_shared/supabase.ts";
 import * as v from "../../_shared/validate.ts";
 import type { AdminContext } from "../context.ts";
 
@@ -105,6 +105,8 @@ function testMessage(error: ProviderError, job: string): string {
       return "There was no answer in time. Try again.";
     case "invalid_output":
       return "The model answered, but not in a usable way. Choose another one.";
+    case "retention":
+      return "Works, but this ElevenLabs account cannot use zero retention. Switch it off under Transcription.";
     default:
       return `${NAMES[error.provider]} had a problem. Try again later.`;
   }
@@ -115,7 +117,14 @@ async function testOne(job: string, provider: Provider, model: string): Promise<
   if (!apiKey) return { ok: false, message: `Save the ${NAMES[provider]} key first.` };
   try {
     if (job === "transcription" && provider === "elevenlabs") {
-      await elevenlabs.checkKey(apiKey, model);
+      // Tested the way recordings are sent: with zero retention when it is on.
+      const { data } = await adminClient().from("app_settings").select("elevenlabs_zero_retention").eq("id", true).single();
+      const zeroRetention = Boolean(data?.elevenlabs_zero_retention);
+      try {
+        await elevenlabs.checkKey(apiKey, model, zeroRetention);
+      } catch (error) {
+        throw zeroRetention ? await elevenlabs.explainRefusal(error, apiKey, model) : error;
+      }
     } else if (job === "transcription") {
       await gemini.testAudio(apiKey, model, new Uint8Array(await elevenlabs.silentWav(1).arrayBuffer()));
     } else if (provider === "gemini") {
