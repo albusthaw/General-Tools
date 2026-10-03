@@ -4,6 +4,7 @@
 //
 // Run: node tests/mock-ai/server.mjs [port]   (default 54399)
 // Test helpers: GET /__log, POST /__reset, POST /__fail {"match": "...", "status": 503, "times": 1}
+// (add "query": "..." to fail only requests whose query string holds that text)
 // Management API state for the deploy tests: GET or POST /__auth_config, POST /__project
 // {"status": "..."}, POST /__api_keys [...], GET /__secrets.
 
@@ -49,8 +50,8 @@ function readBody(req) {
   });
 }
 
-function takeFailure(path) {
-  const index = failures.findIndex((f) => path.includes(f.match) && f.times > 0);
+function takeFailure(path, search) {
+  const index = failures.findIndex((f) => path.includes(f.match) && (!f.query || search.includes(f.query)) && f.times > 0);
   if (index < 0) return null;
   failures[index].times -= 1;
   return failures[index];
@@ -207,7 +208,7 @@ async function handle(req, res) {
   }
   if (path === "/__secrets") return send(res, 200, functionSecrets);
 
-  const injected = takeFailure(path);
+  const injected = takeFailure(path, url.search);
   if (injected) return send(res, injected.status ?? 503, { error: { message: injected.message ?? "Injected failure" } });
 
   const key = keyFrom(req);

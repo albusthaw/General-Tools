@@ -81,7 +81,8 @@ Aurora: four large, blurred, slowly drifting blobs in sky blue, ice blue, pale p
 
 Side menu contents:
 - Clinical Scribe
-- **Admin settings** (admins only): User settings, AI settings, Recording, Review records, Audit log, Google sign-in, Email (SMTP), Phone apps
+- Phone apps (everyone, from 1.4.0)
+- **Admin settings** (admins only): User settings, AI settings, Recording, Review records, Audit log, Google sign-in, Email (SMTP)
 - Account area at the bottom: initials, name, role, Change password, Sign out.
 
 ## 7. Screens
@@ -90,9 +91,11 @@ Side menu contents:
 
 **Scribe**: one recorder card. Before recording: note template picker, optional visit label, minutes left, a large round "Start recording" button. While recording: red pulsing dot with "Recording", large tabular timer, live level bars, Pause/Resume, Finish (primary), Discard (text button with confirmation). After Finish: a four-step progress line (Saving audio → Transcribing → Writing note → Ready) with a calm sentence under it ("You can close this page. The note will be in History."). When ready: the note card (sections, Copy note), the transcript card (collapsed by default, Copy transcript) and "Write another note".
 
-**Templates**: two groups, Shared and Mine, as cards with name, short description and a View button. "Create template" opens the builder: describe → draft appears → edit or "Ask for changes" → name → Save. Admins create shared templates from AI settings with the same builder.
+**Templates**: two groups, Shared and Mine, as cards with name, short description and a View button. "Create template" opens the builder: describe → draft appears → edit or "Ask for changes" → name → Save. For admins the builder first asks "Who can use this template?" with **Everyone in the clinic** (chosen first) or **Only me**. Admins also edit, make default and archive shared templates from the template's dialog, and can share one of their own with everyone. Anyone can delete their own templates.
 
-**History**: search field and a list grouped by day (Today, Yesterday, dates). Each row: label, time, length, status chip, note count. The detail view: transcript card and note cards, each with Copy; "Write another note" picker at the top; Delete in an overflow menu.
+**History**: search field ("Search labels, transcripts and notes") and a list grouped by day (Today, Yesterday, dates), 10 recordings per page with Previous, "Page 2 of 14" and Next under the list. Search covers every recording and says how many were found; a match inside a transcript or note shows a short extract under the title. Each row: label, time, length, status chip, note count. The detail view: transcript card, "Write another note" picker, then the notes as cards that open and close: the header shows the template name, when it was written and Copy note; only the newest is open at first; with two or more notes a quiet button switches between Newest first and Oldest first. Delete in an overflow menu.
+
+**Phone apps**: in the side menu for everyone, under Clinical Scribe. The server link with Copy and a QR code, the Android download and the iPhone steps; admins also see the clinic name card.
 
 **Admin pages**: page title, one main action at the top right (stacked under the title on phones), then cards. Tables on desktop, stacked cards on phones. Dangerous actions sit in an overflow menu and always confirm in a dialog that names the person or item.
 

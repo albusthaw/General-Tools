@@ -23,18 +23,41 @@ export function copyButton(getText, { label = "Copy", copiedLabel = "Copied", on
   return btn;
 }
 
-/** note: { id, template_name, status, content, error_message, created_at, completed_at } */
-export function noteCard(note, { onCopied, onRetry, highlight = false } = {}) {
+function noteChip(status) {
+  if (status === "failed") return chip("Could not be written", "red");
+  if (status === "queued" || status === "writing") return chip("Being written", "blue");
+  return null;
+}
+
+let noteCount = 0;
+
+/**
+ * note: { id, template_name, status, content, error_message, created_at, completed_at }
+ * With open (true or false) the note opens and closes; onToggle(open) hears about it.
+ */
+export function noteCard(note, { onCopied, onRetry, highlight = false, open = null, onToggle } = {}) {
+  const folds = open !== null;
+  const copy = note.status === "done" ? copyButton(() => note.content ?? "", { label: "Copy note", copiedLabel: "Note copied", onCopied: () => onCopied?.(note) }) : null;
+  const bodyId = `note-body-${++noteCount}`;
+  const toggle = folds
+    ? button(open ? "Hide note" : "Show note", { icon: "chevronDown", variant: "quiet", size: "small", attrs: { "aria-expanded": String(open), "aria-controls": bodyId } })
+    : null;
+  toggle?.classList.toggle("is-open", Boolean(open));
   const head = h(
     "div",
     { class: "card-head" },
     h(
       "div",
-      {},
+      { class: folds ? "note-title" : "" },
       h("h3", {}, icon("noteWrite"), h("span", { text: note.template_name })),
-      h("p", { class: "card-sub", text: note.completed_at ? `Written ${dateTime(note.completed_at)}` : `Asked for ${dateTime(note.created_at)}` }),
+      h(
+        "p",
+        { class: "card-sub" },
+        h("span", { text: note.completed_at ? `Written ${dateTime(note.completed_at)}` : `Asked for ${dateTime(note.created_at)}` }),
+        folds ? noteChip(note.status) : null,
+      ),
     ),
-    note.status === "done" ? copyButton(() => note.content ?? "", { label: "Copy note", copiedLabel: "Note copied", onCopied: () => onCopied?.(note) }) : null,
+    folds ? h("div", { class: "btn-row" }, toggle, copy) : copy,
   );
 
   let body;
@@ -56,7 +79,23 @@ export function noteCard(note, { onCopied, onRetry, highlight = false } = {}) {
     );
   }
 
-  return h("article", { class: ["glass-card", "card", "note-card", highlight && "is-new"] }, head, body);
+  if (!folds) return h("article", { class: ["glass-card", "card", "note-card", highlight && "is-new"], dataset: { id: note.id } }, head, body);
+
+  const region = h("div", { class: "note-body", attrs: { id: bodyId }, hidden: !open }, body);
+  const card = h("article", { class: ["glass-card", "card", "note-card", "folds", !open && "is-closed", highlight && "is-new"], dataset: { id: note.id } }, head, region);
+  const flip = () => {
+    const nowOpen = region.hidden;
+    region.hidden = !nowOpen;
+    card.classList.toggle("is-closed", !nowOpen);
+    toggle.classList.toggle("is-open", nowOpen);
+    toggle.setAttribute("aria-expanded", String(nowOpen));
+    toggle.querySelector("span").textContent = nowOpen ? "Hide note" : "Show note";
+    onToggle?.(nowOpen);
+  };
+  toggle.addEventListener("click", flip);
+  // The title opens and closes the note too.
+  head.querySelector(".note-title").addEventListener("click", flip);
+  return card;
 }
 
 export function transcriptCard(text, { collapsed = true, onCopied } = {}) {

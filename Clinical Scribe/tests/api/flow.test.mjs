@@ -3,6 +3,7 @@
 // Needs a freshly reset local stack, the functions server and the mock AI server.
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
+import { opusWebm } from "../helpers/audio.mjs";
 import {
   browserClient,
   friendlyCode,
@@ -18,26 +19,29 @@ import {
 const ADMIN = { email: "admin@example.test", password: "Admin-pass-2026" };
 const ALICE = { email: "alice@example.test", password: "Alice-pass-2026", name: "Alice Clinician" };
 const BOB = { email: "bob@example.test", password: "Bobby-pass-2026", name: "Bob Clinician" };
+const CAROL = { email: "carol@example.test", password: "Carol-pass-2026", name: "Carol Clinician" };
 
 const state = {};
 
-async function uploadPart(client, scribe, seq, bytes = 20_000) {
+async function uploadPart(client, scribe, seq, audio) {
   const path = `${scribe.upload_prefix}/${String(seq).padStart(4, "0")}.${scribe.extension}`;
-  const { error } = await client.storage.from("recordings").upload(path, new Uint8Array(bytes).fill(7), {
+  const { error } = await client.storage.from("recordings").upload(path, audio, {
     contentType: "audio/webm",
     upsert: false,
   });
   return { path, error };
 }
 
-async function recordAndFinish(client, { templateId = null, seconds = 20 } = {}) {
+// The app reports `seconds`; the audio it sends holds `audioSeconds` (the same,
+// unless a test says otherwise), or is the given file.
+async function recordAndFinish(client, { templateId = null, seconds = 20, audioSeconds = seconds, audio = null } = {}) {
   const { data: scribe, error } = await client.rpc("start_scribe", {
     p_template_id: templateId,
     p_title: "Test visit",
     p_mime_type: "audio/webm",
   });
   assert.equal(error, null, error?.message);
-  const up = await uploadPart(client, scribe, 1);
+  const up = await uploadPart(client, scribe, 1, audio ?? opusWebm(audioSeconds));
   assert.equal(up.error, null, up.error?.message);
   const reg = await client.rpc("register_segment", {
     p_scribe_id: scribe.scribe_id,
@@ -196,7 +200,8 @@ describe("Clinical Scribe server", () => {
     assert.match(note.content, /^Plan:/m);
 
     const credit = await state.alice.rpc("get_my_context");
-    assert.equal(credit.data.credit.seconds_left, 1800 - 20, "20 reported seconds; 20.5 measured is within the tolerance");
+    assert.equal(credit.data.credit.seconds_left, 1800 - 20, "20 seconds of audio");
+    assert.equal(sql(`select measured_seconds from public.scribe_segments where scribe_id = '${scribe.scribe_id}'`), "20.00");
     const log = await mock("/__log");
     assert.ok(log.some((e) => e.path === "/v1/speech-to-text"));
     assert.ok(log.some((e) => e.path === "/v1beta/interactions"));
@@ -239,11 +244,58 @@ describe("Clinical Scribe server", () => {
     const bobSees = await state.bob.from("templates").select("id").eq("id", saved.data);
     assert.deepEqual(bobSees.data, [], "personal templates stay private");
     await state.admin.rpc("admin_update_settings", { p_changes: { note_provider: "gemini" } });
+    state.aliceTemplateId = saved.data;
+  });
+
+  it("lets people delete their own templates, even ones that wrote notes", async () => {
+    const id = state.aliceTemplateId;
+    const bobTries = await state.bob.rpc("delete_template", { p_id: id });
+    assert.equal(friendlyCode(bobTries.error), "not_found", "nobody else can delete it");
+    const removed = await state.alice.rpc("delete_template", { p_id: id });
+    assert.equal(removed.error, null, removed.error?.message);
+    const { data: left } = await state.alice.from("templates").select("id").eq("id", id);
+    assert.deepEqual(left, []);
+    // The note written with it keeps its own copy of the template's name and text.
+    const kept = sql(`select template_name || '|' || status || '|' || (template_id is null) from public.notes
+                      where scribe_id = '${state.scribeId}' and content like '%Presenting complaint:%'`);
+    assert.match(kept, /\|done\|true$/);
+    // Finished notes stay final in every other way.
+    assert.throws(() => sql(`update public.notes set template_id = null, content = 'changed' where scribe_id = '${state.scribeId}'`), /cannot be changed/);
+  });
+
+  it("lets admins share one of their own templates with everyone", async () => {
+    const own = await state.admin.rpc("save_template", {
+      p_id: null, p_name: "Ward round note", p_description: "Daily review", p_body: "Progress:\n[progress]\n\nPlan:\n[plan]",
+      p_source_request: "", p_scope: "personal",
+    });
+    assert.equal(own.error, null, own.error?.message);
+    const before = await state.alice.from("templates").select("id").eq("id", own.data);
+    assert.deepEqual(before.data, [], "personal until it is shared");
+    const byUser = await state.alice.rpc("share_template", { p_id: own.data });
+    assert.equal(friendlyCode(byUser.error), "not_allowed");
+
+    const shared = await state.admin.rpc("share_template", { p_id: own.data });
+    assert.equal(shared.error, null, shared.error?.message);
+    const after = await state.alice.from("templates").select("id, scope").eq("id", own.data);
+    assert.deepEqual(after.data, [{ id: own.data, scope: "shared" }]);
+    assert.equal(sql(`select count(*) from public.audit_log where action = 'template.shared_created' and details ->> 'template_id' = '${own.data}'`), "1");
+    const again = await state.admin.rpc("share_template", { p_id: own.data });
+    assert.equal(friendlyCode(again.error), "not_found", "only personal templates are shared");
+
+    // Admins cannot take someone else's personal template.
+    const { data: alicesOwn } = await state.alice.rpc("save_template", {
+      p_id: null, p_name: "My own", p_description: "", p_body: "Section:\n[x]", p_source_request: "", p_scope: "personal",
+    });
+    const taken = await state.admin.rpc("share_template", { p_id: alicesOwn });
+    assert.equal(friendlyCode(taken.error), "not_found");
+    const deleted = await state.alice.rpc("delete_template", { p_id: alicesOwn });
+    assert.equal(deleted.error, null);
   });
 
   it("transcribes with Gemini's transcription model using background mode", async () => {
     await state.admin.rpc("admin_update_settings", { p_changes: { transcription_provider: "gemini" } });
-    const scribe = await recordAndFinish(state.alice, { seconds: 10 });
+    // The app reports 10 seconds, but the audio holds 20.
+    const scribe = await recordAndFinish(state.alice, { seconds: 10, audioSeconds: 20 });
     const done = await waitFor(async () => {
       const { data } = await state.alice.from("scribes").select("status, transcript, error_message").eq("id", scribe.scribe_id).single();
       if (data.status === "failed") throw new Error(data.error_message);
@@ -254,7 +306,7 @@ describe("Clinical Scribe server", () => {
     assert.ok(log.some((e) => e.path === "/upload/v1beta/files"));
     assert.ok(log.some((e) => e.method === "DELETE" && e.path.startsWith("/v1beta/files/")), "audio removed from Google");
     const ctx = await state.alice.rpc("get_my_context");
-    assert.equal(ctx.data.credit.gemini_seconds, 600 - 15, "10 reported, 20 measured: the 5 seconds beyond the tolerance are charged");
+    assert.equal(ctx.data.credit.gemini_seconds, 600 - 20, "10 reported, 20 in the audio: the real length is charged");
     await state.admin.rpc("admin_update_settings", { p_changes: { transcription_provider: "elevenlabs" } });
   });
 
@@ -374,7 +426,7 @@ describe("Clinical Scribe server", () => {
     const part = await audioPart(state.admin, state.scribeId, 1);
     assert.equal(part.status, 200);
     assert.equal(part.type, "application/octet-stream");
-    assert.equal(part.bytes, 20_000);
+    assert.equal(part.bytes, opusWebm(20).length);
 
     const userPart = await audioPart(state.alice, state.scribeId, 1);
     assert.equal(userPart.status, 403, "only admins get audio through the function");
@@ -433,6 +485,150 @@ describe("Clinical Scribe server", () => {
     await state.admin.rpc("admin_update_settings", { p_changes: { elevenlabs_zero_retention: false } });
   });
 
+  it("explains when the ElevenLabs account cannot use zero retention", async () => {
+    // Like ElevenLabs for accounts below Enterprise: requests with zero retention are refused.
+    await mock("/__reset", {});
+    await mock("/__fail", { match: "/v1/speech-to-text", query: "enable_logging=false", status: 403, message: "Zero retention mode is not available for this subscription.", times: 100 });
+    const refused = await invoke(state.admin, "admin", { action: "keys.check_zero_retention" });
+    assert.equal(refused.error, null, JSON.stringify(refused.error));
+    assert.equal(refused.data.ok, false);
+    assert.match(refused.data.message, /only for Enterprise accounts/);
+    const asUser = await invoke(state.alice, "admin", { action: "keys.check_zero_retention" });
+    assert.equal(asUser.status, 403);
+
+    // Switched on anyway: the recording stops with a clear message, and its minutes come back.
+    await state.admin.rpc("admin_update_settings", { p_changes: { elevenlabs_zero_retention: true } });
+    const before = (await state.alice.rpc("get_my_context")).data.credit.seconds_left;
+    const scribe = await recordAndFinish(state.alice, { seconds: 6 });
+    const failed = await waitFor(async () => {
+      const { data } = await state.alice.from("scribes").select("status, error_message").eq("id", scribe.scribe_id).single();
+      return data.status === "failed" ? data : null;
+    }, { label: "refused zero retention" });
+    assert.match(failed.error_message, /cannot use zero retention/);
+    assert.match(failed.error_message, /Ask ElevenLabs not to keep recordings/);
+    assert.equal((await state.alice.rpc("get_my_context")).data.credit.seconds_left, before, "minutes returned");
+    const tested = await invoke(state.admin, "admin", { action: "models.test", transcription: { provider: "elevenlabs", model: "scribe_v2_medical" } });
+    assert.match(tested.data.results[0].message, /cannot use zero retention/);
+
+    // Switched off, Try again works.
+    await state.admin.rpc("admin_update_settings", { p_changes: { elevenlabs_zero_retention: false } });
+    const retry = await state.alice.rpc("retry_scribe", { p_scribe_id: scribe.scribe_id });
+    assert.equal(retry.error, null, retry.error?.message);
+    await waitTranscribed(state.alice, scribe.scribe_id);
+
+    // An account that allows it passes the check.
+    await mock("/__reset", {});
+    const accepted = await invoke(state.admin, "admin", { action: "keys.check_zero_retention" });
+    assert.equal(accepted.data.ok, true);
+    assert.equal(sql(`select count(*) from public.audit_log where action = 'secret.checked' and details ->> 'zero_retention' = 'true'`), "2");
+  });
+
+  it("charges the real length of the audio, whatever the app reports", async () => {
+    const before = (await state.alice.rpc("get_my_context")).data.credit.seconds_left;
+    const scribe = await recordAndFinish(state.alice, { seconds: 5, audioSeconds: 65 });
+    await waitTranscribed(state.alice, scribe.scribe_id);
+    const after = (await state.alice.rpc("get_my_context")).data.credit.seconds_left;
+    assert.equal(before - after, 65);
+    assert.equal(sql(`select duration_seconds || ',' || charged_seconds from public.scribes where id = '${scribe.scribe_id}'`), "65,65");
+    assert.equal(sql(`select measured_seconds from public.scribe_segments where scribe_id = '${scribe.scribe_id}'`), "65.00");
+  });
+
+  it("does not transcribe audio longer than the minutes left until an admin adds more", async () => {
+    const created = await invoke(state.admin, "admin", {
+      action: "users.create", email: CAROL.email, full_name: CAROL.name, password: CAROL.password, role: "user",
+      elevenlabs_minutes: 1, gemini_minutes: 0, unlimited: false,
+    });
+    assert.equal(created.error, null, JSON.stringify(created.error));
+    CAROL.id = created.data.id;
+    const carol = await signIn(CAROL.email, CAROL.password);
+
+    // One minute left. The app reports 30 seconds, but the audio holds 150.
+    await mock("/__reset", {});
+    const scribe = await recordAndFinish(carol, { seconds: 30, audioSeconds: 150 });
+    const failed = await waitFor(async () => {
+      const { data } = await carol.from("scribes").select("status, error_message").eq("id", scribe.scribe_id).single();
+      return data.status === "failed" ? data : null;
+    }, { label: "refused for minutes" });
+    assert.match(failed.error_message, /not enough transcription minutes for the real length/);
+    assert.equal((await carol.rpc("get_my_context")).data.credit.seconds_left, 60, "the 30 seconds taken at the start came back");
+    const sent = (await mock("/__log")).filter((e) => e.path === "/v1/speech-to-text");
+    assert.deepEqual(sent, [], "nothing was sent to ElevenLabs");
+
+    // Trying again by herself does not help.
+    const early = await carol.rpc("retry_scribe", { p_scribe_id: scribe.scribe_id });
+    assert.equal(friendlyCode(early.error), "not_enough_credit");
+
+    // Once the admin adds minutes, Try again works and the real length is charged.
+    await state.admin.rpc("admin_adjust_credit", { p_user: CAROL.id, p_provider: "elevenlabs", p_mode: "add", p_minutes: 4, p_note: "More" });
+    const retry = await carol.rpc("retry_scribe", { p_scribe_id: scribe.scribe_id });
+    assert.equal(retry.error, null, retry.error?.message);
+    await waitTranscribed(carol, scribe.scribe_id);
+    assert.equal((await carol.rpc("get_my_context")).data.credit.seconds_left, 300 - 150);
+  });
+
+  it("refuses a recording longer than the longest allowed, whatever the app reports", async () => {
+    await state.admin.rpc("admin_update_settings", { p_changes: { max_recording_minutes: 5 } });
+    const before = (await state.alice.rpc("get_my_context")).data.credit.seconds_left;
+    const scribe = await recordAndFinish(state.alice, { seconds: 50, audioSeconds: 400 });
+    const failed = await waitFor(async () => {
+      const { data } = await state.alice.from("scribes").select("status, error_message").eq("id", scribe.scribe_id).single();
+      return data.status === "failed" ? data : null;
+    }, { label: "too long" });
+    assert.match(failed.error_message, /longer than the longest recording allowed/);
+    assert.equal((await state.alice.rpc("get_my_context")).data.credit.seconds_left, before, "minutes returned");
+
+    // The lengths the app reports are checked too.
+    const { data: open } = await state.alice.rpc("start_scribe", { p_template_id: null, p_title: "", p_mime_type: "audio/webm" });
+    const up = await uploadPart(state.alice, open, 1, opusWebm(400));
+    assert.equal(up.error, null, up.error?.message);
+    const claimed = await state.alice.rpc("register_segment", { p_scribe_id: open.scribe_id, p_seq: 1, p_duration_seconds: 400, p_mime_type: "audio/webm" });
+    assert.equal(friendlyCode(claimed.error), "too_long");
+    await state.alice.rpc("discard_scribe", { p_scribe_id: open.scribe_id });
+    await state.admin.rpc("admin_update_settings", { p_changes: { max_recording_minutes: 120 } });
+  });
+
+  it("never shows the transcript of a recording that failed part way and got its minutes back", async () => {
+    // A good first part, then a second part that cannot be processed.
+    const before = (await state.alice.rpc("get_my_context")).data.credit.seconds_left;
+    const { data: scribe } = await state.alice.rpc("start_scribe", { p_template_id: null, p_title: "Two parts", p_mime_type: "audio/webm" });
+    for (const [seq, audio, seconds] of [[1, opusWebm(10), 10], [2, new Uint8Array(5000).fill(7), 10]]) {
+      const up = await uploadPart(state.alice, scribe, seq, audio);
+      assert.equal(up.error, null, up.error?.message);
+      const reg = await state.alice.rpc("register_segment", { p_scribe_id: scribe.scribe_id, p_seq: seq, p_duration_seconds: seconds, p_mime_type: "audio/webm" });
+      assert.equal(reg.error, null, reg.error?.message);
+    }
+    await state.alice.rpc("finish_scribe", { p_scribe_id: scribe.scribe_id, p_segment_count: 2 });
+    await waitFor(async () => {
+      const { data } = await state.alice.from("scribes").select("status").eq("id", scribe.scribe_id).single();
+      return data.status === "failed";
+    }, { label: "failed part way" });
+    // Let a part that was already running finish.
+    await waitFor(async () => sql(`select count(*) from public.jobs where scribe_id = '${scribe.scribe_id}' and status in ('queued', 'running')`) === "0", { label: "jobs settled" });
+    assert.equal((await state.alice.rpc("get_my_context")).data.credit.seconds_left, before, "minutes returned");
+
+    const { data: row } = await state.alice.from("scribes").select("transcript").eq("id", scribe.scribe_id).single();
+    assert.ok(!row.transcript, "no transcript on the recording");
+    const parts = await state.alice.from("scribe_segments").select("transcript").eq("scribe_id", scribe.scribe_id);
+    assert.ok(parts.error, "the transcript of a single part cannot be read");
+    const state_ = await state.alice.from("scribe_segments").select("seq, status, duration_seconds").eq("scribe_id", scribe.scribe_id).order("seq");
+    assert.equal(state_.error, null, state_.error?.message);
+    assert.equal(state_.data.length, 2, "the state of each part can still be read");
+  });
+
+  it("does not transcribe a file whose length cannot be read, and gives the minutes back", async () => {
+    const before = (await state.alice.rpc("get_my_context")).data.credit.seconds_left;
+    const scribe = await recordAndFinish(state.alice, { seconds: 10, audio: new Uint8Array(20_000).fill(7) });
+    const failed = await waitFor(async () => {
+      const { data } = await state.alice.from("scribes").select("status, error_message").eq("id", scribe.scribe_id).single();
+      return data.status === "failed" ? data : null;
+    }, { label: "unreadable audio" });
+    assert.match(failed.error_message, /length of this recording's audio could not be checked/);
+    assert.equal((await state.alice.rpc("get_my_context")).data.credit.seconds_left, before);
+    // The worker's own functions are closed to people.
+    const measured = await state.alice.rpc("svc_segment_measured", { p_segment_id: scribe.scribe_id, p_measured: 1, p_byte_size: 1 });
+    assert.ok(measured.error);
+  });
+
   it("keeps the model lists current and tests the chosen models", async () => {
     const find = (lists, provider, purpose) => lists.find((l) => l.provider === provider && l.purpose === purpose);
     const initial = await invoke(state.admin, "admin", { action: "models.catalog" });
@@ -482,6 +678,54 @@ describe("Clinical Scribe server", () => {
 
     const asUser = await invoke(state.alice, "admin", { action: "models.refresh" });
     assert.equal(asUser.status, 403);
+  });
+
+  it("finds any recording by label, transcript or note, ten to a page", async () => {
+    const search = async (client, query, page = 1) => {
+      const { data, error } = await client.rpc("search_my_recordings", { p_query: query, p_page: page });
+      assert.equal(error, null, error?.message);
+      return data;
+    };
+    // Enough older recordings to fill three pages.
+    const have = (await search(state.alice, "")).total;
+    sql(`insert into public.scribes (owner_id, title, status, segment_count, duration_seconds, transcript, started_at, finished_at, transcribed_at)
+         select '${ALICE.id}', 'Clinic visit ' || g, 'transcribed', 1, 60, 'Speaker 1: Routine review number ' || g || '.',
+                now() - make_interval(days => g), now() - make_interval(days => g), now() - make_interval(days => g)
+         from generate_series(1, ${23 - have}) g`);
+
+    const pages = [await search(state.alice, "", 1), await search(state.alice, "", 2), await search(state.alice, "", 3)];
+    assert.deepEqual(pages.map((p) => [p.total, p.pages, p.page_size, p.items.length]), [[23, 3, 10, 10], [23, 3, 10, 10], [23, 3, 10, 3]]);
+    const times = pages.flatMap((p) => p.items.map((item) => item.started_at));
+    assert.deepEqual(times, [...times].sort().reverse(), "newest first across the pages");
+    assert.equal(new Set(pages.flatMap((p) => p.items.map((item) => item.id))).size, 23, "no recording twice");
+    assert.deepEqual((await search(state.alice, "", 9)).items, [], "a page past the end is empty");
+
+    const label = await search(state.alice, "clinic VISIT 7");
+    assert.deepEqual(label.items.map((item) => [item.title, item.found_in, item.extract]), [["Clinic visit 7", "label", null]]);
+
+    const transcript = await search(state.alice, "a cough");
+    assert.ok(transcript.total >= 3);
+    for (const item of transcript.items) {
+      assert.equal(item.found_in, "transcript");
+      assert.match(item.extract, /a cough/);
+    }
+
+    const note = await search(state.alice, "presenting complaint");
+    assert.ok(note.items.some((item) => item.id === state.scribeId && item.found_in === "note" && /Presenting complaint/.test(item.extract)));
+    const templateName = await search(state.alice, "SOAP");
+    assert.ok(templateName.items.some((item) => item.found_in === "note" && item.extract === "SOAP note"));
+
+    assert.equal((await search(state.alice, "%")).total, 0, "% is a plain character");
+    assert.equal((await search(state.alice, "_")).total, 0, "_ is a plain character");
+    const long = await search(state.alice, "x".repeat(5000));
+    assert.equal(long.total, 0);
+
+    // Only the person's own recordings.
+    const bobs = await search(state.bob, "");
+    const alices = new Set(pages.flatMap((p) => p.items.map((item) => item.id)));
+    assert.ok(bobs.items.every((item) => !alices.has(item.id)));
+    const anonymous = await browserClient().rpc("search_my_recordings", { p_query: "", p_page: 1 });
+    assert.ok(anonymous.error, "nobody signed out can search");
   });
 
   it("manages credit, roles, suspension and removal with safeguards", async () => {

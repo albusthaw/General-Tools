@@ -7,6 +7,8 @@ export const ROUTES = [
   { name: "templates", pattern: /^\/templates$/, module: "scribe", title: "Templates" },
   { name: "history", pattern: /^\/history$/, module: "scribe", title: "History" },
   { name: "history-detail", pattern: new RegExp(`^/history/(${UUID})$`), module: "scribe", title: "History" },
+  // For everyone. The old admin address still opens it. In the apps it opens from More.
+  { name: "apps", pattern: /^\/(?:admin\/)?apps$/, fromMore: true, title: "Phone apps" },
   { name: "admin-users", pattern: /^\/admin\/users$/, admin: true, title: "User settings" },
   { name: "admin-ai", pattern: /^\/admin\/ai$/, admin: true, title: "AI settings" },
   { name: "admin-recordings", pattern: /^\/admin\/recordings$/, admin: true, title: "Recording" },
@@ -14,7 +16,6 @@ export const ROUTES = [
   { name: "admin-audit", pattern: /^\/admin\/audit$/, admin: true, title: "Audit log" },
   { name: "admin-google", pattern: /^\/admin\/google$/, admin: true, title: "Google sign-in" },
   { name: "admin-email", pattern: /^\/admin\/email$/, admin: true, title: "Email (SMTP)" },
-  { name: "admin-apps", pattern: /^\/admin\/apps$/, admin: true, title: "Phone apps" },
   // Only in the apps: account, server and admin settings.
   { name: "more", pattern: /^\/more$/, appOnly: true, title: "More" },
 ];

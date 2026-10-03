@@ -9,13 +9,16 @@ import { handleBack } from "../back.js";
 import { snackbar } from "../snackbar.js";
 import { saveFile } from "./files.js";
 import { finishGoogleSignIn, startGoogleSignIn } from "./google.js";
-import { haptic } from "./haptics.js";
+import { applyVibration, haptic, setVibration, vibrationOn } from "./haptics.js";
 import { createCapture, findRecording, recoverParts } from "./native-capture.js";
 import { beforeRecording } from "./permissions.js";
 import { watchRecorder } from "./recording.js";
 import { authStorage } from "./storage.js";
 
 export { authStorage, beforeRecording, createCapture, findRecording, haptic, recoverParts, saveFile, startGoogleSignIn };
+
+/** The Vibration switch in More. */
+export const vibration = { isOn: vibrationOn, set: setVibration };
 
 const LINK_KEY = "cs-connect-link";
 const USED_KEY = "cs-launch-link-used";
@@ -59,6 +62,7 @@ export async function setUp() {
   });
   App.addListener("appUrlOpen", ({ url }) => onLink(url));
   watchRecorder();
+  applyVibration();
 }
 
 /** The server link from a connect link that opened the app, used once. */

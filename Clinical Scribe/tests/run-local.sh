@@ -52,7 +52,7 @@ if wants unit; then
     echo "Checking the server functions..."
     deno check supabase/functions/worker/index.ts supabase/functions/templates-ai/index.ts supabase/functions/admin/index.ts supabase/functions/connect/index.ts
     deno lint supabase/functions tests/functions
-    deno test tests/functions/
+    deno test --allow-read=tests/functions/fixtures tests/functions/
   else
     echo "Deno is not installed, so the server function checks were skipped."
   fi

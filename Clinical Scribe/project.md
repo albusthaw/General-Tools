@@ -33,32 +33,33 @@ There are two roles:
 
 **Templates**
 - Shared templates (made by admins, available to everyone). One of them is the default. SOAP note is installed as the first default.
-- Personal templates. To make one, the person describes the note they want (for example "medical clerking note: presenting complaint, HOPI, past history, drugs, allergies, social, family, examination, impression, plan"). The template AI turns this into a detailed template. The person reviews it, can ask for changes, can make small edits, names it and saves it.
+- Personal templates. To make one, the person describes the note they want (for example "medical clerking note: presenting complaint, HOPI, past history, drugs, allergies, social, family, examination, impression, plan"). The template AI turns this into a detailed template. The person reviews it, can ask for changes, can make small edits, names it and saves it. People can delete their own templates at any time, even ones that already wrote notes (from 1.4.0).
+- Admins make templates on this tab too: for everyone in the clinic, or only for themselves and shared later. They archive, edit and choose the default shared template here (from 1.4.0, section 13.1).
 - The saved template text is sent with the transcript when a note is written, so the note follows that format.
 
 **History**
-- A list of the person's own recordings with date, label, length, status and number of notes.
+- A list of the person's own recordings with date, label, length, status and number of notes, 10 to a page. The search finds any recording by its label, transcript or notes, and shows where it found the words (from 1.4.0, section 13.4).
 - Opening one shows:
   1. The raw transcript (read-only, copyable), with "Write another note" to use any template later.
-  2. Every note written from it, newest first. Notes are final: they cannot be edited, only copied.
+  2. Every note written from it, newest first. Each note opens and closes; only the newest is open at first. Notes are final: they cannot be edited, only copied.
 - Unfinished recordings (for example, the browser closed during recording) are shown with "Process the saved audio" and "Delete".
 
 ### 2.3 Admin settings (side menu category)
 1. **User settings**: add people (name, email, starting password, role, starting credit), change password, change role, suspend or restore, remove, approve waiting accounts, assign transcription credit.
-2. **AI settings**: save, replace, check and remove the keys for ElevenLabs, Gemini and DeepSeek; update the model lists from each service and test the chosen models; choose the transcription service (ElevenLabs or Gemini) and model; choose the note service (Gemini by default, or DeepSeek) and model; choose the single template service (Gemini or DeepSeek) and model; recording settings (audio retention, longest recording); manage shared templates.
+2. **AI settings**: save, replace, check and remove the keys for ElevenLabs, Gemini and DeepSeek; update the model lists from each service and test the chosen models; choose the transcription service (ElevenLabs or Gemini) and model; choose the note service (Gemini by default, or DeepSeek) and model; choose the single template service (Gemini or DeepSeek) and model; recording settings (audio retention, longest recording); manage shared templates. ElevenLabs zero retention is checked with ElevenLabs before it can be switched on (section 13.6).
 3. **Recording** (admins only): every recording with its clinician, length, status and the state of its audio (kept until a date, deleted by the retention setting, deleted with the recording or with the account), filtered by person and by audio state. Deleted recordings stay listed as deleted. Listening or downloading needs a warning, a reason and a confirmation tick; the opening and every download are written to the audit log.
 4. **Review records** (other people's history): a warning screen, a required reason and a confirmation tick before anything is shown. Every list view, record opened and copy action is written to the audit log with the admin's name, the person whose record it is, the record, the reason and the time.
 5. **Audit log**: a read-only, filterable list of every admin action and every record review, with CSV export.
 6. **Google sign-in**: step-by-step guidance, the redirect address to copy into Google Cloud, Client ID and Client secret fields, an on/off switch. Saving applies the settings to the Supabase project's sign-in service.
 7. **Email (SMTP)**: a working settings form (server, port, security, user name, password, sender) that saves securely. It is deliberately not used by anything yet; the page says so.
-8. **Phone apps** (from 1.2.0): the server link with a QR code, the Android download, the iPhone install steps and the clinic name the apps show (audited). The phone apps themselves are planned in `appproject.md` and designed in `appdesign.md`.
+8. **Phone apps** (from 1.2.0; open to everyone from 1.4.0, section 13.2): the server link with a QR code, the Android download, the iPhone install steps and, for admins, the clinic name the apps show (audited). The phone apps themselves are planned in `appproject.md` and designed in `appdesign.md`.
 
 ### 2.4 Credit
 - Credit is counted in minutes of audio, kept separately for ElevenLabs and for Gemini, because the two services are paid separately.
 - The active transcription service decides which balance is used.
 - Admins can add minutes, set an exact balance, or mark a person as unlimited. Every change and every use is written to a credit ledger.
 - The recorder shows the minutes left and stops by itself when the balance runs out (with a warning two minutes before).
-- If transcription finally fails, the minutes are given back. After transcription, if the service reports a longer audio length than the browser did, the difference is charged, so the balance cannot be gamed.
+- If transcription finally fails, the minutes are given back. From 1.4.0 the server measures each audio part from the file itself before it is transcribed and charges its real length; audio that needs more minutes than are left is not transcribed (section 13.7). Only admins can add minutes.
 
 ## 3. Architecture
 
@@ -115,7 +116,8 @@ The worker:
 1. Answers the wake-up call at once (202) and keeps working in the background (`EdgeRuntime.waitUntil`).
 2. Claims jobs with `FOR UPDATE SKIP LOCKED` and a lease. Up to three jobs run at once. A job that is not finished when its lease ends (for example, the function was stopped by the platform time limit) is picked up again.
 3. Saves each job's progress in the job row (`state`), so a job continues from where it stopped instead of starting again.
-4. Retries temporary problems (rate limits, timeouts, service errors) with growing delays; after five failures the record is marked as failed with a plain-language message and a Try again button, and the credit is returned.
+4. Before a part is sent to a service, measures the real length of its audio from the file and settles the minutes for it (section 13.7).
+5. Retries temporary problems (rate limits, timeouts, service errors) with growing delays; after five failures the record is marked as failed with a plain-language message and a Try again button, and the credit is returned.
 
 **Why this gives "unlimited time"**: no single function call has to process a whole consultation. Each part is at most 10 minutes of audio. Gemini work runs in Gemini's background mode (`background: true`) and is polled, so even a slow answer never hits the Supabase time limit (150 seconds on the free plan, 400 seconds on paid plans). ElevenLabs transcribes a 10-minute part in seconds. A two-hour recording is simply twelve independent jobs.
 
@@ -123,8 +125,8 @@ The worker:
 
 | Job | What it does |
 | --- | --- |
-| `transcribe_segment` | ElevenLabs: send the audio part (multipart upload) to `POST /v1/speech-to-text` with diarisation; build "Speaker 1: …" lines from word speaker labels; store `audio_duration_secs`. Gemini: upload the part to the Files API, create a background interaction, poll until complete, read the text and speaker annotations, then delete the interaction and the file from Google. |
-| `finalize_transcript` | Runs when the last part is done. Joins parts in order, saves the transcript, corrects the credit charge if the services measured more audio, and queues the first note with the template chosen before recording. |
+| `transcribe_segment` | First measures the part's real length from the file and charges any extra minutes, or stops if there are not enough. ElevenLabs: send the audio part (multipart upload) to `POST /v1/speech-to-text` with diarisation; build "Speaker 1: …" lines from word speaker labels; store `audio_duration_secs`. Gemini: upload the part to the Files API, create a background interaction, poll until complete, read the text and speaker annotations, then delete the interaction and the file from Google. |
+| `finalize_transcript` | Runs when the last part is done. Joins parts in order, saves the transcript, settles the credit to the measured length of all parts, and queues the first note with the template chosen before recording. |
 | `generate_note` | Sends the template text and transcript to the note AI. Gemini runs as a background interaction; DeepSeek streams. Saves the note as final text. |
 | `cleanup` | Hourly: deletes audio past the retention period through the Storage API, removes old finished jobs, closes expired record reviews. |
 
@@ -146,11 +148,11 @@ The admin picks models from saved lists, or types a model name. **Update model l
 | Templates (one service) | Gemini or DeepSeek | `gemini-3.8-flash` / `deepseek-flash` | JSON output: name, description, body. |
 
 API facts the code relies on:
-- ElevenLabs: `POST https://api.elevenlabs.io/v1/speech-to-text`, header `xi-api-key`, multipart fields `model_id`, `file`, `diarize`, `timestamps_granularity`, optional `language_code`. Zero retention is the query parameter `?enable_logging=false`, not a form field. Response has `text`, `words[]` (`text`, `type`, `speaker_id`, `start`, `end`) and `audio_duration_secs`.
+- ElevenLabs: `POST https://api.elevenlabs.io/v1/speech-to-text`, header `xi-api-key`, multipart fields `model_id`, `file`, `diarize`, `timestamps_granularity`, optional `language_code`. Zero retention is the query parameter `?enable_logging=false`, not a form field, and ElevenLabs allows it only for Enterprise accounts; other accounts get an error. Response has `text`, `words[]` (`text`, `type`, `speaker_id`, `start`, `end`) and `audio_duration_secs`.
 - Gemini: header `x-goog-api-key`. Files: `POST /upload/v1beta/files` with the resumable protocol, then `GET/DELETE /v1beta/files/{id}`. Interactions: `POST /v1beta/interactions` (`model`, `input`, `system_instruction`, `generation_config`, `response_format`, `background`, `store`), `GET` and `DELETE /v1beta/interactions/{id}`. Audio input is `{type: "audio", mime_type, uri}` for an uploaded file or `{type: "audio", mime_type, data}` for small inline audio. Status values: `in_progress`, `queued`, `completed`, `failed`, `cancelled`, `requires_action` (tools only, so treated as failed), and `incomplete` or `budget_exceeded` (used only when they carry text). Text is in `output_text` or in `steps[].content[]`. Audio counts as 32 tokens per second. The transcription model takes `generation_config.transcription_config` with `mode: {type: "verbatim", diarization_mode: "speaker", timestamp_granularities: ["word"]}`.
 - DeepSeek: `POST https://api.deepseek.com/chat/completions`, bearer key, `thinking: {type: "enabled" | "disabled"}`, `stream: true`, `response_format: {type: "json_object"}`; `GET /models` for the list.
 
-Privacy notes shown to admins: use paid plans (free plans may keep or use data); ElevenLabs "zero retention" (`?enable_logging=false`) is offered as an option for plans that allow it; Gemini interactions and files are deleted as soon as the result is read.
+Privacy notes shown to admins: use paid plans (free plans may keep or use data); ElevenLabs "zero retention" (`?enable_logging=false`) is an option for Enterprise accounts, checked with ElevenLabs before it is switched on; Gemini interactions and files are deleted as soon as the result is read.
 
 ### 5.1 Prompts and prompt-injection defence
 - System instructions fix the rules: use only what is in the transcript, never invent findings, write "Not discussed" for missing sections, follow the template headings exactly, plain text output, British English.
@@ -297,3 +299,84 @@ Each module has one job. Screens talk to the server only through `lib/api/*.js`.
 5. Deploy script, workflow, README, root README row.
 6. Local end-to-end run, fixes, screenshots, security review.
 7. Commit and push.
+
+## 13. Version 1.4.0: templates, history, phone apps, vibration, zero retention and minutes
+
+This section is the plan for 1.4.0, written before the work. It covers the website, the iPhone web app and the Android app, which share the same pages.
+
+### 13.1 Templates
+**Goal:** people can always delete their own templates, and templates an admin makes for the clinic appear for everyone at once.
+
+**Found:** a personal template that had written even one note could not be deleted. Each note links to its template; deleting the template clears that link, and the rule that keeps finished notes unchanged refused it. An admin who used **Create template** on the Templates tab made a personal template, because shared templates could only be made in AI settings.
+
+**Plan:**
+- A new migration lets the final-note rule allow exactly one change: clearing the link to a deleted template. The note keeps its own copy of the template name and text, so nothing a person reads changes.
+- On the Templates tab, an admin's **Create template** first asks who can use it: **Everyone in the clinic** (shared, chosen by default) or **Only me**. People who are not admins make personal templates as before.
+- Admins manage shared templates on the Templates tab too: **Edit**, **Make default** and **Archive**. Archived ones stay in AI settings, where they can be restored.
+- An admin's own personal template gets **Share with everyone**. A new function `share_template` turns it into a shared one and writes it in the audit log.
+
+### 13.2 Phone apps for everyone
+**Goal:** every person can find how to get the apps, not only admins.
+
+**Plan:** the Phone apps page moves to `/apps` for everyone: the server link with its QR code, the Android download and the iPhone steps. On the website it is in the side menu under Clinical Scribe; in the apps it is a row in the More tab. The clinic name card stays for admins only. The old address `/admin/apps` still opens the page.
+
+### 13.3 Notes in History
+**Goal:** a recording with many notes stays easy to read.
+
+**Plan:** each note in History is a card that opens and closes. Its header shows the template name, when it was written (or that it is being written or failed) and **Copy note**. Only the newest note is open at first; the others are closed. A new note opens by itself when it is ready to show. What a person opened or closed stays that way while the page refreshes itself. With two or more notes, a button switches between **Newest first** and **Oldest first**.
+
+### 13.4 History list
+**Goal:** with hundreds of recordings, History stays quick, and search finds anything.
+
+**Plan:**
+- History shows 10 recordings per page, newest first and grouped by day, with **Previous**, **Next** and "Page 2 of 14" under the list.
+- The search box searches every recording on the server, not only the page shown: the label, the transcript, the notes and the names of the note templates. Results use the same pages and say how many were found. When the match is in a transcript or a note, a short extract with the matching words appears under the title.
+- A new database function `search_my_recordings(query, page)` returns one page and the total. It only reads the signed-in person's own recordings.
+
+### 13.5 Vibration in the Android app
+**Goal:** a person can switch the app's vibrations off.
+
+**Plan:** the More tab gets a **Vibration** switch (on at first), shown only in the Android app because iPhone web apps cannot vibrate. The choice is kept on the phone. When it is off, the app makes no vibrations, and the app's page view no longer vibrates on a long press either (a new call to the app's Android code).
+
+### 13.6 ElevenLabs zero retention
+**Found:** ElevenLabs asks for zero retention with `enable_logging=false` in the address of `POST /v1/speech-to-text` (its current API reference, checked in October 2026). That is exactly what the server sends. ElevenLabs allows zero retention only for Enterprise accounts and refuses it for other accounts (some reports say it is ignored instead). The refusal was shown as "ElevenLabs did not accept the saved service key" or "could not use this recording", which looked as if the request was wrong.
+
+**Plan:**
+- Keep the documented request.
+- When an admin switches it on, AI settings sends a one-second silent test with zero retention through the admin function. If ElevenLabs refuses it while a normal test works, the switch turns back off and says why. **Test chosen models** also uses zero retention when it is on.
+- If a recording is refused later (for example after a plan change), the worker checks the key without zero retention. If that works, the recording fails with a clear message: this ElevenLabs account cannot use zero retention, and an admin can switch it off and use **Try again**.
+- Clearer setting text: ElevenLabs keeps no copy of the audio or transcript, only Enterprise accounts can use it, and it is checked when switched on.
+
+### 13.7 Minutes that cannot be bypassed
+**Goal:** nobody gets transcription without the minutes for it, unless an admin adds minutes or allows unlimited use.
+
+**Found:**
+- The server charged the length that the app reported for each audio part. A changed app could report one second for a long part.
+- The charge was also capped by the time between start and finish, so long audio uploaded quickly cost little.
+- The only check of the real length came after transcription, and only ElevenLabs reports a length.
+- The longest-recording setting was kept only by the app.
+- People could read the transcript of each finished part of a recording. A recording that failed part way gave all its minutes back, yet its finished parts could still be read.
+
+**Plan:**
+- The worker measures the real length of every audio part from the file itself before sending it to any AI service. It counts the audio frames in WebM and Ogg (Opus), MP4 (AAC) and AAC files, so paused time never counts.
+- Only the codecs the apps record are accepted, because only their frames say their own length: Opus in WebM and Ogg, and AAC (LC or HE) in MP4 and in ADTS frames. In MP4 the frame count comes from the size table and the rate from the AAC setup the decoder uses, so changed timing in the file cannot shorten it.
+- A new database function `svc_segment_measured` saves the measured length. The recording is charged for the measured length: every second beyond what was charged is charged, with no allowance an app could use.
+  - Any extra minutes are charged before transcription.
+  - If the minutes left are not enough, the recording stops with a clear message and everything charged for it is given back. An admin can add minutes; then **Try again** charges the full measured length.
+- The audio file must be the same size as when it was saved, so a part cannot be swapped.
+- A part whose length cannot be read is not sent to any service.
+- The server also checks the longest allowed recording, both against the reported lengths and against the measured ones.
+- **Try again** and **Process the saved audio** charge by the measured lengths already saved.
+- At the end, the charge is settled to the measured length of all parts: audio more than 2 seconds shorter than charged gives the difference back.
+- At most 2 KB of a file may follow its last whole frame (a frame cut off when recording stopped), so no real amount of audio can hide there. An MP4 recording may end inside its last block of audio data; its frames were counted from the fragment that lists them.
+- People with unlimited minutes are never charged, but their lengths are still measured.
+- People can no longer read the transcript of a single part. A recording's transcript appears only when every part is done and its minutes are settled.
+
+### 13.8 Versions, apps and tests
+- `VERSION` 1.4.0. The apps need the new server functions, so `MIN_SERVER_VERSION` becomes 1.4.0.
+- The Android app is built by the workflow with the kept signing key. Builds made here for checking are never saved into `Release/`.
+- Tests:
+  - Deno: the length measurement against files made with ffmpeg, and broken files.
+  - Server tests: deleting a used template, sharing a template, search and pages, every way around the minutes found above, and zero retention refusal.
+  - Browser tests: templates for admins and users, the Phone apps page for users, History pages and search, and closed and open notes.
+  - Unit tests: the rules of the vibration switch (on at first, kept on the phone, nothing vibrates while off).

@@ -1,7 +1,9 @@
-// One recording in History: its transcript and every note written from it.
+// One recording in History: its transcript and every note written from it. The
+// notes open and close; only the newest is open at first.
 import { button, withBusy } from "../../components/button.js";
 import { noteCard, statusChip, transcriptCard } from "../../components/cards.js";
 import { banner, loading, toast } from "../../components/feedback.js";
+import { segmented } from "../../components/fields.js";
 import { menuButton } from "../../components/menu.js";
 import { finishScribe, getNotes, getScribe, retryNote, retryScribe } from "../../lib/api/scribes.js";
 import { listTemplates } from "../../lib/api/templates.js";
@@ -32,6 +34,13 @@ export async function renderHistoryDetail(container, route) {
   let stopped = false;
   listTemplates().then((list) => (templates = list)).catch(() => {});
 
+  // The notes keep what the person opened or closed, and the order they chose,
+  // while the page refreshes itself.
+  const notesBox = h("div", { class: "stack" });
+  const chosen = new Map();
+  let notes = [];
+  let newestFirst = true;
+
   function schedule(ms) {
     clearTimeout(timer);
     if (!stopped) timer = setTimeout(load, ms);
@@ -39,14 +48,15 @@ export async function renderHistoryDetail(container, route) {
 
   async function load() {
     try {
-      const [scribe, notes] = await Promise.all([getScribe(scribeId), getNotes(scribeId)]);
+      const [scribe, latest] = await Promise.all([getScribe(scribeId), getNotes(scribeId)]);
       if (stopped) return;
       if (!scribe) {
         replace(body, banner({ kind: "info", title: "This recording is not available", text: "It may have been deleted." }));
         return;
       }
       if (!templates.length) templates = await listTemplates().catch(() => []);
-      draw(scribe, notes);
+      notes = latest;
+      draw(scribe);
       const busy = scribe.status === "processing" || notes.some((n) => n.status === "queued" || n.status === "writing");
       if (busy && document.visibilityState === "visible") schedule(POLL_MS);
     } catch (error) {
@@ -112,7 +122,41 @@ export async function renderHistoryDetail(container, route) {
     return null;
   }
 
-  function draw(scribe, notes) {
+  // Notes arrive newest first. The newest is open unless the person closed it; a
+  // note the person opened stays open.
+  function drawNotes() {
+    if (!notes.length) {
+      replace(notesBox);
+      return;
+    }
+    const newestId = notes[0].id;
+    const order = notes.length > 1
+      ? segmented("Order of the notes", [{ value: "newest", label: "Newest first" }, { value: "oldest", label: "Oldest first" }], {
+        value: newestFirst ? "newest" : "oldest",
+        onChange: (value) => {
+          newestFirst = value === "newest";
+          drawNotes();
+          notesBox.querySelector('.segmented [aria-pressed="true"]')?.focus();
+        },
+      })
+      : null;
+    replace(
+      notesBox,
+      h("div", { class: "section-row" }, h("h2", { class: "section-title", text: notes.length === 1 ? "Note" : `Notes (${notes.length})` }), order?.el),
+      (newestFirst ? notes : [...notes].reverse()).map((note) =>
+        noteCard(note, {
+          open: chosen.get(note.id) ?? note.id === newestId,
+          onToggle: (open) => chosen.set(note.id, open),
+          onRetry: async (n) => {
+            await retryNote(n.id);
+            schedule(0);
+          },
+        })
+      ),
+    );
+  }
+
+  function draw(scribe) {
     const title = scribe.title || `Recording at ${timeOnly(scribe.started_at)}`;
     const head = h(
       "div",
@@ -149,14 +193,9 @@ export async function renderHistoryDetail(container, route) {
       statusBanner(scribe),
       transcribed ? transcriptCard(scribe.transcript ?? "", { collapsed: false }) : null,
       transcribed ? anotherNoteForm(scribeId, templates, () => schedule(0)) : null,
-      notes.length ? h("h2", { class: "section-title", text: notes.length === 1 ? "Note" : `Notes (${notes.length})` }) : null,
-      notes.map((note) => noteCard(note, {
-        onRetry: async (n) => {
-          await retryNote(n.id);
-          schedule(0);
-        },
-      })),
+      notesBox,
     );
+    drawNotes();
   }
 
   function onVisible() {

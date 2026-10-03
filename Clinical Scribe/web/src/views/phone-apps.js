@@ -1,18 +1,19 @@
-// Phone apps: the server link staff type into the apps, a QR code that opens
-// Clinical Scribe on a phone, the Android app download, the iPhone steps, and the
-// clinic name shown when the apps connect.
-import { button, withBusy } from "../../components/button.js";
-import { banner, chip, loading, pageHead, toast } from "../../components/feedback.js";
-import { textField } from "../../components/fields.js";
-import { qrCode } from "../../components/qr.js";
-import { appAddress, config, isApp } from "../../config.js";
-import { getSettings, setClinicName } from "../../lib/api/admin.js";
-import { androidAppAt, readSiteInfo, sizeText } from "../../lib/connection/published.js";
-import { readAnswer } from "../../lib/connection/validate.js";
-import { copyText } from "../../lib/clipboard.js";
-import { h, replace } from "../../lib/dom.js";
-import { messageOf } from "../../lib/errors.js";
-import { icon } from "../../lib/icons.js";
+// Phone apps, for everyone: the server link staff type into the apps, a QR code
+// that opens Clinical Scribe on a phone, the Android app download and the iPhone
+// steps. Admins also set the clinic name shown when the apps connect.
+import { button, withBusy } from "../components/button.js";
+import { banner, chip, loading, pageHead, toast } from "../components/feedback.js";
+import { textField } from "../components/fields.js";
+import { qrCode } from "../components/qr.js";
+import { appAddress, config, isApp } from "../config.js";
+import { getSettings, setClinicName } from "../lib/api/admin.js";
+import { androidAppAt, readSiteInfo, sizeText } from "../lib/connection/published.js";
+import { readAnswer } from "../lib/connection/validate.js";
+import { copyText } from "../lib/clipboard.js";
+import { h, replace } from "../lib/dom.js";
+import { messageOf } from "../lib/errors.js";
+import { icon } from "../lib/icons.js";
+import { isAdmin } from "../lib/store.js";
 
 // The website's own address, or, inside the apps, the website the server named.
 function siteAddress() {
@@ -64,10 +65,11 @@ export async function renderPhoneApps(container) {
   replace(container, pageHead("Phone apps"), body);
 
   const site = siteAddress();
+  const admin = isAdmin();
   let settings = null;
   let info = null;
   try {
-    [settings, info] = await Promise.all([getSettings(), readSiteInfo(site)]);
+    [settings, info] = await Promise.all([admin ? getSettings() : null, readSiteInfo(site)]);
   } catch (error) {
     replace(body, banner({ kind: "bad", text: messageOf(error) }));
     return;
@@ -86,7 +88,7 @@ export async function renderPhoneApps(container) {
         h("div", { class: "btn-row" }, h("a", { class: "btn primary", href: android.url, attrs: { download: "" } }, icon("download"), h("span", { text: "Download" })), android.version ? chip(`Version ${android.version}`, "blue") : null, android.size ? chip(sizeText(android.size)) : null),
         steps(["Download the app and open the file.", "Tap Install. If the phone asks, allow installs from the browser.", "Open Clinical Scribe and enter the server link."]),
       ]
-      : [h("p", { class: "muted", text: "The Android app is not published with this site yet. Run Build Clinical Scribe Android app on GitHub, then run the deploy again." })],
+      : [h("p", { class: "muted", text: admin ? "The Android app is not published with this site yet. Run Build Clinical Scribe Android app on GitHub, then run the deploy again." : "The Android app is not published with this site yet. Ask your administrator." })],
   );
 
   const iphoneCard = site
@@ -104,6 +106,6 @@ export async function renderPhoneApps(container) {
     ]),
     androidCard,
     iphoneCard,
-    nameCard(settings?.settings?.clinic_name ?? ""),
+    admin ? nameCard(settings?.settings?.clinic_name ?? "") : null,
   );
 }

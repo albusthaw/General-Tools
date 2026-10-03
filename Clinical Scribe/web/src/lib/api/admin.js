@@ -38,6 +38,8 @@ export const creditHistory = (userId, limit = 20) => call("admin_credit_history"
 export const saveKey = (name, value) => action("keys.save", { name, value });
 export const removeKey = (name) => action("keys.remove", { name });
 export const checkKey = (name, model) => action("keys.check", { name, model });
+// → { ok, message }: whether the ElevenLabs account accepts zero retention.
+export const checkZeroRetention = (model) => action("keys.check_zero_retention", { model });
 export const modelCatalog = () => action("models.catalog");
 export const refreshModels = () => action("models.refresh");
 export const testModels = (choices) => action("models.test", choices);

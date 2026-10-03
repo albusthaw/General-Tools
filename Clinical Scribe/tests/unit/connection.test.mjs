@@ -83,7 +83,8 @@ test("version rules", () => {
   assert.ok(compareVersions("1.10.0", "1.9.9") > 0);
   assert.equal(compareVersions("1.2.0", "1.2.0"), 0);
   assert.equal(serverTooOld("1.1.9"), true);
-  assert.equal(serverTooOld("1.2.0"), false);
+  assert.equal(serverTooOld("1.3.9"), true, "History search needs a 1.4.0 server");
+  assert.equal(serverTooOld("1.4.0"), false);
   assert.equal(serverTooOld(undefined), true);
   assert.equal(isNewerVersion("1.2.1", "1.2.0"), true);
   assert.equal(isNewerVersion("1.2.0", "1.2.0"), false);
@@ -109,14 +110,14 @@ const CONFIG_URL = "https://abc.supabase.co/rest/v1/rpc/get_public_config";
 test("the lookup reads the website's connect file, then proves the key works", async () => {
   const { asked, fetchImpl } = network({
     "https://name.github.io/General-Tools/connect.json": answer({ name: "" }),
-    [CONFIG_URL]: { server_version: "1.2.0", google_enabled: true, clinic_name: "Renamed Clinic" },
+    [CONFIG_URL]: { server_version: "1.4.0", google_enabled: true, clinic_name: "Renamed Clinic" },
   });
   const result = await lookupServer("name.github.io/General-Tools", { fetchImpl });
   assert.deepEqual(result.connection, {
     serverUrl: "https://abc.supabase.co",
     publishableKey: PUBLISHABLE,
     name: "Renamed Clinic",
-    version: "1.2.0",
+    version: "1.4.0",
     siteUrl: "",
     appUrl: "",
     googleEnabled: true,
@@ -131,7 +132,7 @@ test("the lookup reads the website's connect file, then proves the key works", a
 test("the server's own clinic name wins over the one in the connect file", async () => {
   const { fetchImpl } = network({
     "https://abc.supabase.co/functions/v1/connect": answer({ name: "Old Name" }),
-    [CONFIG_URL]: { server_version: "1.2.0", clinic_name: "New Name" },
+    [CONFIG_URL]: { server_version: "1.4.0", clinic_name: "New Name" },
   });
   assert.equal((await lookupServer("abc.supabase.co", { fetchImpl })).connection.name, "New Name");
 });

@@ -10,6 +10,7 @@ export type ProviderErrorKind =
   | "unavailable" // the service had a problem
   | "timeout" // no answer in time
   | "not_set_up" // no key saved
+  | "retention" // the account may not use zero retention (ElevenLabs)
   | "invalid_output"; // the answer could not be used
 
 export type ProviderName = "gemini" | "elevenlabs" | "deepseek";
@@ -56,6 +57,8 @@ export function userMessage(error: ProviderError): string {
       return `${name} is not set up yet. Ask an administrator to add the service key in AI settings.`;
     case "invalid_output":
       return `${name} gave an answer that could not be used. Please try again.`;
+    case "retention":
+      return `This ${name} account cannot use zero retention; ${name} allows it only for Enterprise accounts. Ask an administrator to switch off "Ask ElevenLabs not to keep recordings" in AI settings, then use Try again.`;
     default:
       return `${name} had a problem. Please try again in a few minutes.`;
   }

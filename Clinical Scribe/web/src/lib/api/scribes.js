@@ -29,16 +29,20 @@ export const renameScribe = (scribeId, title) => call("rename_scribe", { p_scrib
 export const requestNote = (scribeId, templateId) => call("request_note", { p_scribe_id: scribeId, p_template_id: templateId });
 export const retryNote = (noteId) => call("retry_note", { p_note_id: noteId });
 
-const LIST_COLUMNS = "id, title, status, duration_seconds, started_at, transcribed_at, error_message, notes(count)";
-
-export async function listScribes({ search = "", before = null, limit = 30 } = {}) {
-  let query = supabase.from("scribes").select(LIST_COLUMNS).order("started_at", { ascending: false }).limit(limit);
-  if (before) query = query.lt("started_at", before);
-  const term = search.trim().replace(/[%_,()]/g, " ").slice(0, 80);
-  if (term) query = query.ilike("title", `%${term}%`);
-  const { data, error } = await query;
-  if (error) throw fromDatabase(error);
-  return (data ?? []).map((row) => ({ ...row, note_count: row.notes?.[0]?.count ?? 0 }));
+/**
+ * One page (10 recordings, newest first) of the person's own recordings. The
+ * search looks in the label, the transcript, the notes and the template names.
+ * → { total, page, pages, items: [{ id, title, status, duration_seconds, started_at,
+ *     note_count, found_in: "label"|"transcript"|"note"|null, extract }] }
+ */
+export async function searchRecordings({ query = "", page = 1 } = {}) {
+  const data = await call("search_my_recordings", { p_query: query.trim().slice(0, 100), p_page: page });
+  return {
+    total: data?.total ?? 0,
+    page: data?.page ?? 1,
+    pages: data?.pages ?? 1,
+    items: Array.isArray(data?.items) ? data.items : [],
+  };
 }
 
 export async function getScribe(id) {

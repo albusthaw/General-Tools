@@ -1,12 +1,12 @@
-// On tablets and wide windows the tabs move into a glass side bar, with the admin
-// settings listed under them, like tablet apps.
+// On tablets and wide windows the tabs move into a glass side bar, with Phone apps
+// and the admin settings listed under them, like tablet apps.
 import { config } from "../config.js";
 import { h } from "../lib/dom.js";
 import { initials } from "../lib/format.js";
 import { icon } from "../lib/icons.js";
 import { href } from "../lib/router.js";
 import { isAdmin, profile } from "../lib/store.js";
-import { ADMIN_LINKS } from "../views/shell.js";
+import { ADMIN_LINKS, APPS_LINK } from "../views/shell.js";
 import { TABS } from "./tab-bar.js";
 
 export function createSideBar() {
@@ -25,6 +25,7 @@ export function createSideBar() {
       "nav",
       { class: "nav", attrs: { "aria-label": "Sections" } },
       TABS.filter((tab) => tab.name !== "more").map(link),
+      link(APPS_LINK),
       isAdmin() ? h("p", { class: "nav-heading", text: "Admin settings" }) : null,
       isAdmin() ? ADMIN_LINKS.map(link) : null,
     ),

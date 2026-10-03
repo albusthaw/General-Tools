@@ -3,10 +3,10 @@ import { renderAiSettings } from "./admin/ai.js";
 import { renderAudit } from "./admin/audit.js";
 import { renderEmail } from "./admin/email.js";
 import { renderGoogle } from "./admin/google.js";
-import { renderPhoneApps } from "./admin/phone-apps.js";
 import { renderRecordings } from "./admin/recordings.js";
 import { renderReview } from "./admin/review.js";
 import { renderUsers } from "./admin/users.js";
+import { renderPhoneApps } from "./phone-apps.js";
 import { renderHistory } from "./scribe/history.js";
 import { renderHistoryDetail } from "./scribe/history-detail.js";
 import { renderRecord } from "./scribe/record.js";
@@ -17,6 +17,7 @@ export const VIEWS = {
   templates: renderTemplates,
   history: renderHistory,
   "history-detail": renderHistoryDetail,
+  apps: renderPhoneApps,
   "admin-users": renderUsers,
   "admin-ai": renderAiSettings,
   "admin-recordings": renderRecordings,
@@ -24,5 +25,4 @@ export const VIEWS = {
   "admin-audit": renderAudit,
   "admin-google": renderGoogle,
   "admin-email": renderEmail,
-  "admin-apps": renderPhoneApps,
 };

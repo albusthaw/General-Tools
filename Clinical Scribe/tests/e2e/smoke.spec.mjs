@@ -11,6 +11,7 @@ const ADMIN_PAGES = [
   ["/admin/google", "Google sign-in"],
   ["/admin/email", "Email (SMTP)"],
   ["/admin/apps", "Phone apps"],
+  ["/apps", "Phone apps"],
 ];
 
 test("the sign-in page explains a wrong password in plain words", async ({ page }) => {
@@ -38,6 +39,13 @@ test("an admin can open every screen", async ({ page }) => {
 test("a user sees only Clinical Scribe and cannot open admin pages", async ({ page }) => {
   await signIn(page, USER);
   await expect(page.locator(".nav-heading")).toHaveCount(0);
+  // Phone apps is for everyone; the clinic name stays with the admins.
+  await expect(page.locator(".sidebar").getByRole("link", { name: "Phone apps", includeHidden: true })).toHaveCount(1);
+  await go(page, "/apps");
+  await expect(page.locator(".content-inner h1").first()).toHaveText("Phone apps");
+  await expect(page.locator(".qr-code")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Name shown in the apps" })).toHaveCount(0);
+  await expectNoSideScroll(page);
   await expect(page.getByRole("link", { name: "Recording", exact: true, includeHidden: true })).toHaveCount(0);
   for (const path of ["/admin/users", "/admin/recordings"]) {
     await page.goto(`/#${path}`);

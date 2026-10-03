@@ -43,11 +43,7 @@ export async function check({ caller, body }: AdminContext) {
     } else if (name === "deepseek_api_key") {
       await deepseek.checkKey(apiKey);
     } else {
-      let model = typeof body.model === "string" && body.model ? v.modelName(body.model) : "";
-      if (!model) {
-        const { data } = await adminClient().from("app_settings").select("elevenlabs_model").eq("id", true).single();
-        model = data?.elevenlabs_model ?? "scribe_v2";
-      }
+      const model = await chosenElevenLabsModel(body.model);
       await elevenlabs.checkKey(apiKey, model);
       message = "The key works with the chosen model.";
     }
@@ -66,3 +62,41 @@ export async function check({ caller, body }: AdminContext) {
   });
   return { ok, message };
 }
+
+async function chosenElevenLabsModel(requested: unknown): Promise<string> {
+  if (typeof requested === "string" && requested) return v.modelName(requested);
+  const { data } = await adminClient().from("app_settings").select("elevenlabs_model").eq("id", true).single();
+  return data?.elevenlabs_model ?? "scribe_v2";
+}
+
+// Before zero retention is switched on: a one-second silent clip sent with zero
+// retention. ElevenLabs allows it only for Enterprise accounts, so other accounts
+// learn it here instead of on their next recording.
+export async function checkZeroRetention({ caller, body }: AdminContext) {
+  const apiKey = await getSecret("elevenlabs_api_key");
+  if (!apiKey) throw new AppError("not_set_up", "Save the ElevenLabs key first.", 409);
+  const model = await chosenElevenLabsModel(body.model);
+
+  let ok = true;
+  let message = "ElevenLabs accepted zero retention for this account.";
+  try {
+    await elevenlabs.checkKey(apiKey, model, true);
+  } catch (error) {
+    if (!(error instanceof ProviderError)) throw error;
+    const reason = await elevenlabs.explainRefusal(error, apiKey, model);
+    ok = false;
+    message = reason instanceof ProviderError && reason.kind === "retention"
+      ? "This ElevenLabs account cannot use zero retention. ElevenLabs allows it only for Enterprise accounts, so it stays off."
+      : userMessage(error);
+  }
+
+  await rpc("svc_audit", {
+    p_actor: caller.id,
+    p_action: "secret.checked",
+    p_target_user: null,
+    p_details: { secret: "elevenlabs_api_key", zero_retention: true, ok },
+    p_user_agent: caller.userAgent,
+  });
+  return { ok, message };
+}
+

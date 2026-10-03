@@ -130,6 +130,14 @@ test.describe("iPhone", () => {
     await expect(page.locator(".more-row", { hasText: "Connected to" })).toContainText("127.0.0.1:54321");
     await expect(page.getByRole("heading", { name: "Admin settings" })).toHaveCount(0);
     await expectNoSideScroll(page);
+    // Everyone has Phone apps in More, to set up another phone. Vibration is an Android app switch.
+    await expect(page.locator(".more-switch")).toHaveCount(0);
+    await page.locator(".more-list").getByRole("link", { name: "Phone apps" }).click();
+    await expect(page.locator(".content-inner h1").first()).toHaveText("Phone apps");
+    await expect(page.locator(".qr-code")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Name shown in the apps" })).toHaveCount(0);
+    await page.locator(".app-back").click();
+    await expect(page.locator(".content-inner h1").first()).toHaveText("More");
 
     // The connection is kept: opening the app again goes straight in.
     await page.reload();

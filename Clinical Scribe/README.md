@@ -3,10 +3,11 @@
 Clinical Scribe records a consultation, turns the speech into a transcript and writes a clinical note in the format you choose. It runs on your own Supabase project, so you keep control of the records, the AI keys and the user accounts.
 
 - **Scribe**: record with pause, resume and finish. The audio is saved in parts while you record. After you press Finish, the server does the rest, even if you close the browser.
-- **Templates**: SOAP note is ready to use. Admins add shared templates for everyone. Each person can make their own templates by describing the note they want; the template AI writes the full template.
-- **History**: every transcript and every note, ready to copy. You can write another note from an old transcript at any time. Notes are final and cannot be edited.
+- **Templates**: SOAP note is ready to use. Each person can make their own templates by describing the note they want; the template AI writes the full template. People can delete their own templates at any time. Admins make templates for everyone, or for themselves and share them later.
+- **History**: every transcript and every note, ready to copy, 10 recordings to a page. The search finds any recording by its label, its transcript or its notes. The notes of a recording open and close; the newest is open. You can write another note from an old transcript at any time. Notes are final and cannot be edited.
+- **Minutes**: each person has transcription minutes that only an admin can add. The server measures the real length of the audio before it is transcribed, so the minutes cannot be bypassed.
 - **Admin settings**: people and their transcription minutes, AI keys and models (with lists that update from each service), the **Recording** page for audio, a logged review of other people's records, the audit log, Google sign-in and email settings.
-- **Phone apps**: an Android app and an iPhone and iPad web app with every feature of the website, laid out for phones. They ask for your server link once.
+- **Phone apps**: an Android app and an iPhone and iPad web app with every feature of the website, laid out for phones. They ask for your server link once. The **Phone apps** page, open to everyone, has the link, a QR code and the downloads.
 
 Transcription uses ElevenLabs or Gemini. Notes use Gemini (the default) or DeepSeek. The template helper uses one of Gemini or DeepSeek.
 
@@ -76,7 +77,7 @@ The workflow appears in the Actions tab only after this folder is on the `main` 
 
 ## 2. First steps in the app
 
-1. **AI settings**: add your service keys and press **Check key** for each. Press **Update model lists** to load the models each service offers now. Choose the transcription service and model, the note service and model, and the template service. Models marked *recommended* are known to work well for each job, and the defaults are a good start. Press **Test chosen models** to send each chosen model a tiny request before you save.
+1. **AI settings**: add your service keys and press **Check key** for each. Press **Update model lists** to load the models each service offers now. Choose the transcription service and model, the note service and model, and the template service. Models marked *recommended* are known to work well for each job, and the defaults are a good start. Press **Test chosen models** to send each chosen model a tiny request before you save. If your ElevenLabs account is an Enterprise account, you can switch on **Ask ElevenLabs not to keep recordings**; it is checked with ElevenLabs before it turns on.
 2. **User settings**: add each person with their name, email address, a starting password and their transcription minutes. Make someone an admin only if they need it.
 3. **Your name**: open the account menu (your name at the bottom of the side menu; on a phone, the account button at the top right) to set the name shown in the audit log.
 4. **Google sign-in** (optional): the page explains each step. People can only sign in with Google if an admin has already added their email address.
@@ -86,7 +87,7 @@ Admins also have the **Recording** page. It lists every recording, who made it a
 
 ## 3. Phone apps
 
-Clinical Scribe has two phone apps with every feature of the website, laid out for phones: an **Android app** and an **iPhone and iPad web app**. Both connect with the **server link**, which is the address of your Clinical Scribe website (for example `https://<your-name>.github.io/General-Tools/`). Admins find the link, a QR code and these steps in **Admin settings → Phone apps**. On a phone, the website's sign-in page also offers the app.
+Clinical Scribe has two phone apps with every feature of the website, laid out for phones: an **Android app** and an **iPhone and iPad web app**. Both connect with the **server link**, which is the address of your Clinical Scribe website (for example `https://<your-name>.github.io/General-Tools/`). Everyone finds the link, a QR code and these steps on the **Phone apps** page: in the side menu of the website, and under **More** in the apps. On a phone, the website's sign-in page also offers the app.
 
 ### iPhone and iPad
 
@@ -103,7 +104,7 @@ An iPhone does not let web apps use the microphone while the phone is locked or 
 3. Open the downloaded file and tap **Install**. If the phone asks, allow installs from the browser.
 4. Open Clinical Scribe, enter the server link (or tap **Open the app** on the website, which fills it in), tap **Connect** and sign in.
 
-The Android app keeps recording when the screen is off, another app is open, or the app is swiped away. A notification shows the time with **Pause** and **Resume**; it never shows the recording label. When a newer app is published, the app says so and offers the download.
+The Android app keeps recording when the screen is off, another app is open, or the app is swiped away. A notification shows the time with **Pause** and **Resume**; it never shows the recording label. The app vibrates briefly when you start, pause or finish a recording; switch off **Vibration** in **More** to stop all its vibrations. When a newer app is published, the app says so and offers the download.
 
 The app is installed from your website, not from Google Play. From 30 September 2026, phones in Brazil, Indonesia, Singapore and Thailand install such apps only from developers verified by Google, and more countries follow in 2027. If your clinic is in one of these countries, register as an Android developer with Google before you share the app.
 
@@ -126,7 +127,7 @@ The key text is encrypted with your password, so it is useless on its own. Witho
 
 ### Clinic name
 
-In **Admin settings → Phone apps**, set the name the apps show when they connect, for example "St Mary's Clinic". Changes are written in the audit log.
+On the **Phone apps** page, admins set the name the apps show when they connect, for example "St Mary's Clinic". Changes are written in the audit log.
 
 ## 4. Upgrade to a newer version
 
@@ -190,7 +191,8 @@ Put the contents of `web/dist` on any static web host. The files use relative pa
 - **AI keys** are kept encrypted in Supabase Vault. Only the server functions can read them. Admins see only the last four characters, and keys never reach the browser.
 - **Accounts**: public sign-up is switched off. Only admins add people. An account that appears any other way has no access until an admin approves it.
 - **Records**: each person sees only their own recordings. Admins can open someone else's records only through **Review records**, which needs a reason and a confirmation. Every list viewed, record opened and item copied is written to the audit log with the admin's name and reason. The audit log cannot be changed or deleted, even by admins.
-- **Audio** is kept in a private storage area and never has a public address. Admins choose how long it is kept (**AI settings → Recordings and sign-in**). Only admins can listen to or download it, on the **Recording** page, after giving a reason; each opening and download is written in the audit log. Gemini copies are deleted from Google as soon as the transcript is read. ElevenLabs offers zero retention on plans that allow it.
+- **Audio** is kept in a private storage area and never has a public address. Admins choose how long it is kept (**AI settings → Recordings and sign-in**). Only admins can listen to or download it, on the **Recording** page, after giving a reason; each opening and download is written in the audit log. Gemini copies are deleted from Google as soon as the transcript is read. With **Ask ElevenLabs not to keep recordings** on, ElevenLabs keeps no copy; ElevenLabs allows this only for Enterprise accounts, so the switch checks with ElevenLabs before it turns on.
+- **Minutes**: before a part of a recording is transcribed, the server measures how much sound the audio file really holds and charges that length. Paused time is not counted, and the length the app reports cannot lower the charge. A recording that needs more minutes than are left, or is longer than the longest recording allowed, is not sent to the AI service, and its minutes are given back. Only admins can add minutes.
 - **Before recording real patients**: use paid plans for Supabase and the AI services, and sign the agreements your organisation needs (for example a data processing agreement or a business associate agreement). Choose a Supabase region that matches your data rules.
 - **Give the app its own web address for real use.** All GitHub Pages sites of one GitHub account share the same address (`<your-name>.github.io`), so pages from your other repositories could read what the app keeps in the browser. Use a custom domain for GitHub Pages (**Settings → Pages → Custom domain**, then run the deploy again), or another host (section 5).
 - **Phone apps** hold no server details or keys until you connect. They accept only https server links, show the clinic before connecting, and refuse a server that would hand out a secret key. The Android app keeps its sign-in encrypted with a key held in the phone's secure hardware, leaves nothing in phone backups, blocks screenshots, and hides its screens in the recent apps list. Its recording notification never shows the label.
@@ -212,12 +214,15 @@ The full security design is in `project.md` (section 7).
 | A model test says "This model is not available to your account" | Press **Update model lists**, choose a model marked *recommended*, then save. |
 | The app says it is not connected | The web app was built without the project details. Run the deploy again, or check the two `VITE_` values on your web host. |
 | Recordings stay at "Transcribing" | Check the key in **AI settings** with **Check key**. In Supabase, **Edge Functions → worker → Logs** shows what the worker is doing. |
-| The phone app says "No Clinical Scribe server was found at that link" | Use the server link shown in **Admin settings → Phone apps**, or the Supabase project address `https://<code>.supabase.co`. |
+| The phone app says "No Clinical Scribe server was found at that link" | Use the server link shown on the **Phone apps** page, or the Supabase project address `https://<code>.supabase.co`. |
 | The phone app says the server "needs an update" | Run **Deploy Clinical Scribe** to bring the server up to date. |
 | Android says "App not installed" when updating | The new copy was signed with another key. Remove the old app first, then install. Set up the signing key ([Build the Android app](#build-the-android-app)) so this does not happen again. |
 | The recording paused by itself | A call, sound from another app or a microphone problem paused it, and the recorder says which. Tap **Resume** when you are ready; nothing recorded is lost. |
 | The iPhone recording paused when the screen locked | iPhone pauses a web app's recording when the phone locks or another app opens. Use **Screen off** to record with a dark screen. If the phone still locks, turn off Low Power Mode and set **Auto-Lock** to **Never** in Settings. |
 | The Android recording stops after the screen has been off for a while | Some phones close apps to save battery. In the phone's **Settings → Apps → Clinical Scribe → Battery**, choose **Unrestricted** (the words differ a little between phone makers). |
+| A recording stopped with "This ElevenLabs account cannot use zero retention" | ElevenLabs allows zero retention only for Enterprise accounts. In **AI settings → Transcription**, switch off **Ask ElevenLabs not to keep recordings** and save. Then open the recording in History and choose **Try again**. |
+| A recording stopped with "There are not enough transcription minutes for the real length of this recording" | The audio was longer than the minutes left. An admin adds minutes in **User settings**; then choose **Try again** on the recording in History. |
+| A recording stopped with "The length of this recording's audio could not be checked" | The audio file was damaged or in a format the server does not accept. Record again. If it keeps happening, report which phone and browser were used. |
 | No admin is left | In the Supabase **SQL Editor**, run `update public.profiles set role = 'admin', status = 'active' where email = 'you@example.org';` with your own email address. |
 
 ## 9. For maintainers
@@ -268,6 +273,16 @@ The workflow **Test Clinical Scribe** runs the same tests on GitHub whenever thi
 5. Tag the release as `cscribe-v<version>`, for example `cscribe-v1.1.0`.
 
 ## Changes
+
+### 1.4.0
+
+- Templates: people can delete their own templates, even ones that already wrote notes. Admins choose **Everyone in the clinic** or **Only me** for a new template, look after shared templates on the Templates tab, and can share their own later.
+- **Phone apps** is now for everyone: in the side menu of the website and under **More** in the apps. The clinic name stays with the admins.
+- History shows 10 recordings a page with **Previous** and **Next**, and the search finds labels, transcripts and notes. The notes of a recording open and close; the newest is open, and the order can change.
+- Minutes are charged for the real length of the audio, measured by the server from the file before it is transcribed. A recording that needs more minutes than an admin gave is not transcribed, and its minutes are given back.
+- ElevenLabs allows zero retention only for Enterprise accounts. The switch now checks with ElevenLabs before it turns on, and a refusal is explained in plain words.
+- Android: a **Vibration** switch in **More**.
+- The phone apps need a server on version 1.4.0 or newer.
 
 ### 1.3.0
 

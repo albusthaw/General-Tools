@@ -16,7 +16,7 @@ export const TABS = [
 /** The tab a page belongs to. */
 export function tabOf(route) {
   if (route.name === "history-detail") return "history";
-  if (route.admin || route.name === "more") return "more";
+  if (route.admin || route.fromMore || route.name === "more") return "more";
   return route.name;
 }
 

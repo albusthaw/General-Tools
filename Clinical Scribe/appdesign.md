@@ -130,14 +130,14 @@ The recorder fills the screen, so it is easy to use with one hand and readable f
 ### 5.6 Templates
 
 - Large title **Templates**. A segmented control **Shared | Mine** sits under the title (a sliding glass thumb on iPhone; Material segmented buttons with a tick on Android).
-- Template cards as on the website. Tap opens the template in a sheet with **Use for next recording** and, for personal ones, **Edit** and **Delete**.
-- Create: the "+" glass button in the navigation bar (iPhone) or the floating **Create template** button (Android) opens the template helper as a full-height sheet.
+- Template cards as on the website. Tap opens the template in a sheet. Personal templates have **Edit** and **Delete** (any of them, also one that has already written notes). For admins, shared templates have **Edit**, **Make default** and **Archive**, and their own personal templates also have **Share with everyone** (from 1.4.0).
+- Create: the "+" glass button in the navigation bar (iPhone) or the floating **Create template** button (Android) opens the template helper as a full-height sheet. For admins, the first step asks who can use it: **Everyone in the clinic** (chosen first) or **Only me**.
 - Pull down to refresh.
 
 ### 5.7 History
 
-- Large title **History**, search field under it (on iPhone it slides up with the title).
-- Recordings grouped by day with headers that stay in place while scrolling: **Today**, **Yesterday**, then dates.
+- Large title **History**, search field under it (on iPhone it slides up with the title). The search finds labels, transcripts and notes in every recording, not only the page shown, and says how many were found; a match inside a transcript or note shows a short extract under the title.
+- Ten recordings per page, grouped by day with headers that stay in place while scrolling: **Today**, **Yesterday**, then dates. Under the list: **Previous**, "Page 2 of 14" and **Next**, large enough for a thumb (from 1.4.0).
 - Each row: label (or time), time and length, status chip, number of notes.
 - Gestures: swipe left for **Rename** (blue) and **Delete** (red, asks for confirmation); long press for a menu (Open, Rename, Delete); pull down to refresh.
 - Android: floating **New recording** button that shrinks to a round button while scrolling.
@@ -146,7 +146,7 @@ The recorder fills the screen, so it is easy to use with one hand and readable f
 ### 5.8 History detail
 
 - Top bar with a back button ("‹ History" glass capsule on iPhone, back arrow on Android), the label or time as the title, and a "⋯" menu with Rename and Delete.
-- Then the same content as the website: transcript card, note cards with Copy, **Write another note** (template sheet).
+- Then the same content as the website: transcript card, **Write another note** (template sheet), then the notes. Each note is a card that opens and closes; the header shows the template name, when it was written and **Copy note**. Only the newest note is open at first. With two or more notes, **Newest first** / **Oldest first** changes the order (from 1.4.0).
 
 ### 5.9 More
 
@@ -154,22 +154,22 @@ The recorder fills the screen, so it is easy to use with one hand and readable f
 - Groups of rows, iOS settings style on iPhone and Material list style on Android:
   - **Account**: Your details, Change password.
   - **Server**: "Connected to St Mary's Clinic" with **Change server**.
-  - **Admin settings** (admins only): User settings, AI settings, Recording, Review records, Audit log, Google sign-in, Email (SMTP), Phone apps.
-  - **App**: Version, and on Android "Get the newest version" when the server has a newer one.
+  - **Admin settings** (admins only): User settings, AI settings, Recording, Review records, Audit log, Google sign-in, Email (SMTP).
+  - **App**: **Phone apps** (for everyone, from 1.4.0); on Android a **Vibration** switch, "Short vibrations when you start, pause or finish a recording" (on at first, kept on the phone); Version; and on Android "Get the newest version" when the server has a newer one.
   - **Sign out** (red row, asks when audio is still being saved, as on the website).
 
 ### 5.10 Admin pages
 
 The existing admin pages appear unchanged inside the app frame: large title, the page's main action under the title, cards, tables shown as stacked cards. Long tables get pull to refresh. Dangerous actions keep their confirmations.
 
-### 5.11 Phone apps (new admin page, website and apps)
+### 5.11 Phone apps (website and apps)
 
-A page under **Admin settings** that helps an admin give the apps to staff:
+A page that helps staff get the apps. From 1.4.0 everyone can open it: on the website from the side menu, in the apps from More. The clinic name card is for admins only.
 
 - **Server link**: the link staff type into the apps, a **Copy** button and a QR code. Scanning the QR code with a phone camera opens the iPhone web app (or, on Android, the website with the app download).
 - **Android app**: **Download** button (when the app file is published with the site), the app version, and two short steps.
 - **iPhone and iPad**: the web app's address with **Copy**, and three short steps.
-- **Name shown in the apps**: the clinic name staff see when they connect (for example "St Mary's Clinic"), with **Save**.
+- **Name shown in the apps** (admins only): the clinic name staff see when they connect (for example "St Mary's Clinic"), with **Save**.
 
 ## 6. Shared app components
 
