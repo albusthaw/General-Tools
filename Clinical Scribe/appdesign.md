@@ -141,7 +141,7 @@ The recorder fills the screen, so it is easy to use with one hand and readable f
 
 - Large title **History**, then two tabs, **Clinical Scribe** and **Voice Note**, each with its own search and page (from 1.5.0), then the search field (on iPhone it slides up with the title). The search finds labels, transcripts and notes in every recording, not only the page shown, and says how many were found; a match inside a transcript or note shows a short extract under the title.
 - Ten recordings per page, grouped by day with headers that stay in place while scrolling: **Today**, **Yesterday**, then dates. Under the list: **Previous**, "Page 2 of 14" and **Next**, large enough for a thumb (from 1.4.0).
-- Each row: the type's tinted icon, label (or time), time and length, status chip, number of notes.
+- Each row: the type's icon, label (or time), time and length, status chip, number of notes.
 - Gestures: swipe left for **Rename** (blue) and **Delete** (red, asks for confirmation); long press for a menu (Open, Rename, Delete); pull down to refresh.
 - Android: floating **New recording** button (**New voice note** on the Voice Note tab) that shrinks to a round button while scrolling.
 - Empty state: "No recordings yet" with a **Start recording** button.

@@ -1,14 +1,11 @@
 /* The two ways to record, Clinical Scribe and Voice Note: the pair of cards at the
-   top of the recording tabs, the type chips, the History tabs and the soft tints
-   that tell the types apart. Periwinkle is Clinical Scribe and aqua is Voice Note;
-   blue stays the one colour for actions. */
+   top of the recording tabs, the type chips, the History tabs and the recorder.
+   Both types share one soft periwinkle tint from the app's own colours; the icon
+   and the name tell them apart, and blue stays the one colour for actions. */
 :root {
-  --scribe-tint: var(--periwinkle-200);
-  --scribe-soft: #eef0ff;
-  --scribe-ink: #3b3f9a;
-  --voice-tint: var(--aqua-200);
-  --voice-soft: #e6f8f5;
-  --voice-ink: #0e6158;
+  --type-tint: var(--periwinkle-200);
+  --type-soft: #eef0ff;
+  --type-ink: #3b3f9a;
 }
 
 /* Pair of cards at the top of both recording tabs */
@@ -46,19 +43,12 @@
 }
 
 .mode-card[aria-current="page"] {
+  background: linear-gradient(135deg, var(--type-tint), var(--type-soft) 75%);
   box-shadow: var(--shadow-float), 0 0 0 2px var(--blue-600);
 }
 
 .mode-card[aria-current="page"]:hover {
   transform: none;
-}
-
-.mode-card.is-scribe[aria-current="page"] {
-  background: linear-gradient(135deg, var(--scribe-tint), var(--scribe-soft) 75%);
-}
-
-.mode-card.is-voice[aria-current="page"] {
-  background: linear-gradient(135deg, var(--voice-tint), var(--voice-soft) 75%);
 }
 
 .mode-icon {
@@ -68,16 +58,8 @@
   width: 44px;
   height: 44px;
   border-radius: 14px;
-}
-
-.mode-card.is-scribe .mode-icon {
-  background: var(--scribe-tint);
-  color: var(--scribe-ink);
-}
-
-.mode-card.is-voice .mode-icon {
-  background: var(--voice-tint);
-  color: var(--voice-ink);
+  background: var(--type-tint);
+  color: var(--type-ink);
 }
 
 .mode-card[aria-current="page"] .mode-icon {
@@ -104,28 +86,21 @@
 }
 
 /* Type chips on templates, recordings and records */
-.chip.mode-scribe {
-  background: var(--scribe-tint);
-  color: var(--scribe-ink);
-}
-
+.chip.mode-scribe,
 .chip.mode-voice {
-  background: var(--voice-tint);
-  color: var(--voice-ink);
+  background: var(--type-tint);
+  color: var(--type-ink);
 }
 
-/* Recorder: a soft glow of the type's colour and a friendly hint. On a narrow
-   screen the minutes chip moves under the heading instead of squeezing it. */
+/* Recorder: a soft glow at the top and a friendly hint. On a narrow screen the
+   minutes chip moves under the heading instead of squeezing it. */
 .recorder-card .card-head {
   flex-wrap: wrap;
 }
 
-.recorder-card.is-scribe {
-  background-image: radial-gradient(120% 70% at 50% 0%, rgba(214, 220, 255, 0.55), rgba(214, 220, 255, 0) 70%);
-}
-
+.recorder-card.is-scribe,
 .recorder-card.is-voice {
-  background-image: radial-gradient(120% 70% at 50% 0%, rgba(200, 239, 234, 0.65), rgba(200, 239, 234, 0) 70%);
+  background-image: radial-gradient(120% 70% at 50% 0%, rgba(214, 220, 255, 0.55), rgba(214, 220, 255, 0) 70%);
 }
 
 .mode-hint {
@@ -136,6 +111,7 @@
   margin-top: 4px;
   padding: 10px 14px;
   border-radius: var(--radius-md);
+  background: rgba(214, 220, 255, 0.5);
   color: var(--ink-2);
   font-size: 14.5px;
   line-height: 1.4;
@@ -147,22 +123,7 @@
   width: 18px;
   height: 18px;
   margin-top: 1px;
-}
-
-.recorder-card.is-scribe .mode-hint {
-  background: rgba(214, 220, 255, 0.5);
-}
-
-.recorder-card.is-scribe .mode-hint svg {
-  color: var(--scribe-ink);
-}
-
-.recorder-card.is-voice .mode-hint {
-  background: rgba(200, 239, 234, 0.6);
-}
-
-.recorder-card.is-voice .mode-hint svg {
-  color: var(--voice-ink);
+  color: var(--type-ink);
 }
 
 /* A recording of the other type is going on */
@@ -181,16 +142,8 @@
   width: 58px;
   height: 58px;
   border-radius: 18px;
-}
-
-.busy-card.is-scribe .busy-icon {
-  background: var(--scribe-tint);
-  color: var(--scribe-ink);
-}
-
-.busy-card.is-voice .busy-icon {
-  background: var(--voice-tint);
-  color: var(--voice-ink);
+  background: var(--type-tint);
+  color: var(--type-ink);
 }
 
 .busy-text h2 {
@@ -205,14 +158,10 @@
 }
 
 /* Templates */
-.template-card.is-scribe .template-icon {
-  background: var(--scribe-tint);
-  color: var(--scribe-ink);
-}
-
+.template-card.is-scribe .template-icon,
 .template-card.is-voice .template-icon {
-  background: var(--voice-tint);
-  color: var(--voice-ink);
+  background: var(--type-tint);
+  color: var(--type-ink);
 }
 
 .type-chips,
@@ -283,22 +232,10 @@
   box-shadow: var(--shadow-press);
 }
 
-.history-tab.is-scribe[aria-current="page"] svg {
-  color: var(--scribe-ink);
-}
-
-.history-tab.is-voice[aria-current="page"] svg {
-  color: var(--voice-ink);
-}
-
-.row-icon.is-scribe {
-  background: var(--scribe-tint);
-  color: var(--scribe-ink);
-}
-
+.row-icon.is-scribe,
 .row-icon.is-voice {
-  background: var(--voice-tint);
-  color: var(--voice-ink);
+  background: var(--type-tint);
+  color: var(--type-ink);
 }
 
 @media (max-width: 759px) {

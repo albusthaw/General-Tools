@@ -158,7 +158,7 @@ Adds only; changes no stored record except giving existing rows the default type
 
 ### 6.1 Recording tabs (both types)
 
-At the top of both recording tabs sits a pair of cards, one per type, each with its own icon (two speech bubbles for Clinical Scribe, a microphone for Voice Note), its name and its short line. The card of the open tab is lit with its own soft tint (periwinkle for Clinical Scribe, aqua for Voice Note) and a blue ring; the other card is plain glass and opens the other tab. On a phone the two cards sit side by side as a compact pair, with the short line under each name. This explains the difference at a glance and makes the start of every recording a little more welcoming.
+At the top of both recording tabs sits a pair of cards, one per type, each with its own icon (two speech bubbles for Clinical Scribe, a microphone for Voice Note), its name and its short line. The card of the open tab is lit with a soft periwinkle tint and a blue ring (both types share the app's own colours; the icon and name tell them apart); the other card is plain glass and opens the other tab. On a phone the two cards sit side by side as a compact pair, with the short line under each name. This explains the difference at a glance and makes the start of every recording a little more welcoming.
 
 ```
 Desktop                                                Phone (390 px)
@@ -174,7 +174,7 @@ Below the pair: the same recorder as today (template picker with only that type'
 
 ### 6.2 Templates tab
 
-One tab, as now: **Shared templates** and **Your templates**. Each template card shows a chip with the type's icon and name; Voice Note templates carry the aqua tint. **Create template** opens the builder with **Template Type** first (Clinical Scribe or Voice Note, each with its short line), then, for admins, **Who can use this template?**. When editing, the type is shown and cannot be changed. **Make default** makes the template the default of its own type.
+One tab, as now: **Shared templates** and **Your templates**. Each template card shows a chip with the type's icon and name, in the same periwinkle tint for both types. **Create template** opens the builder with **Template Type** first (Clinical Scribe or Voice Note, each with its short line), then, for admins, **Who can use this template?**. When editing, the type is shown and cannot be changed. **Make default** makes the template the default of its own type.
 
 ### 6.3 History
 
