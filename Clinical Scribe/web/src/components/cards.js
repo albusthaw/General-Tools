@@ -1,11 +1,12 @@
-// Note and transcript cards, shared by the Scribe screen, History and record review.
+// Note and transcript cards, shared by the recording tabs, History and record review.
 import { copyText } from "../lib/clipboard.js";
 import { h } from "../lib/dom.js";
 import { dateTime } from "../lib/format.js";
 import { icon } from "../lib/icons.js";
+import { modeOf } from "../lib/modes.js";
+import { appHooks } from "../lib/platform/hooks.js";
 import { button, withBusy } from "./button.js";
 import { banner, chip, toast } from "./feedback.js";
-import { appHooks } from "../lib/platform/hooks.js";
 import { noteView, transcriptView } from "./text-view.js";
 
 export function copyButton(getText, { label = "Copy", copiedLabel = "Copied", onCopied, variant = "", size = "small" } = {}) {
@@ -125,6 +126,12 @@ export function transcriptCard(text, { collapsed = true, onCopied } = {}) {
     ),
     region,
   );
+}
+
+/** The type of a recording or template (Clinical Scribe or Voice Note), with its icon. */
+export function modeChip(mode) {
+  const type = modeOf(mode);
+  return chip(type.name, `mode-${type.id}`, type.icon);
 }
 
 export function statusChip(status) {

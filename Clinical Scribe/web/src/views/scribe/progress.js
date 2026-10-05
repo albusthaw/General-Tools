@@ -8,6 +8,7 @@ import { getNotes, getScribe, getSegments, retryNote, retryScribe } from "../../
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { icon } from "../../lib/icons.js";
+import { modeOf } from "../../lib/modes.js";
 import { href } from "../../lib/router.js";
 import { onQueueChange, pendingFor, status as queueStatus } from "../../lib/uploads/queue.js";
 import { refreshContext } from "../app.js";
@@ -78,7 +79,9 @@ function stepsFor({ scribe, segments, notes, localPending, refusal }) {
   ];
 }
 
-export function renderProgress(stage, scribeId, { templates, notice = null, onNewRecording }) {
+// mode: the recording tab this runs on ("scribe" or "voice"), for the words on the buttons.
+export function renderProgress(stage, scribeId, { templates, notice = null, mode = "scribe", onNewRecording }) {
+  const type = modeOf(mode);
   let timer = null;
   let stopped = false;
   let refusal = null;
@@ -114,7 +117,7 @@ export function renderProgress(stage, scribeId, { templates, notice = null, onNe
       ]);
       if (stopped) return;
       if (!scribe) {
-        replace(stage, banner({ kind: "info", title: "This recording is no longer here", text: "It may have been deleted." }), h("div", { class: "btn-row" }, button("New recording", { variant: "primary", icon: "mic", onClick: onNewRecording })));
+        replace(stage, banner({ kind: "info", title: `This ${type.noun} is no longer here`, text: "It may have been deleted." }), h("div", { class: "btn-row" }, button(type.newTitle, { variant: "primary", icon: type.icon, onClick: onNewRecording })));
         return;
       }
       draw(scribe, segments, notes, localPending);
@@ -134,7 +137,7 @@ export function renderProgress(stage, scribeId, { templates, notice = null, onNe
 
     const problems = [];
     if (refusal) {
-      problems.push(banner({ kind: "bad", title: "The recording was saved but not processed", text: messageOf(refusal) }));
+      problems.push(banner({ kind: "bad", title: `The ${type.noun} was saved but not processed`, text: messageOf(refusal) }));
     }
     if (failed) {
       problems.push(banner({
@@ -174,7 +177,7 @@ export function renderProgress(stage, scribeId, { templates, notice = null, onNe
         "div",
         { class: "card-foot" },
         h("a", { class: "btn", href: href(`/history/${scribeId}`) }, icon("history"), h("span", { text: "Open in History" })),
-        button("New recording", { icon: "mic", variant: done || failed || refusal ? "primary" : "", onClick: onNewRecording }),
+        button(type.newTitle, { icon: type.icon, variant: done || failed || refusal ? "primary" : "", onClick: onNewRecording }),
       ),
     );
 

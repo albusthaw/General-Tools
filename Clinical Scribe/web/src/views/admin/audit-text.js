@@ -1,5 +1,7 @@
-// Turns audit entries into plain sentences.
+// Turns audit entries into plain sentences. Entries about templates and records
+// name their type (Clinical Scribe or Voice Note) when the entry carries it.
 import { dateTime } from "../../lib/format.js";
+import { modeOf } from "../../lib/modes.js";
 
 const SERVICE = { elevenlabs: "ElevenLabs", gemini: "Gemini", deepseek: "DeepSeek" };
 const SECRET = {
@@ -47,6 +49,15 @@ export const GROUPS = [
 
 function person(name, email) {
   return name || email || "someone";
+}
+
+// "the shared Voice Note template", or "the shared template" for older entries.
+function templateWords(d, kind = "") {
+  return ["the", kind, d.mode ? modeOf(d.mode).name : "", "template"].filter(Boolean).join(" ");
+}
+
+function addType(details, d) {
+  if (d.mode) details.push(["Type", modeOf(d.mode).name]);
 }
 
 function settingValue(key, value) {
@@ -119,11 +130,13 @@ export function describe(entry) {
       break;
     case "recording.opened":
       text = `${actor} opened the audio of ${target}'s recording${d.title ? ` "${d.title}"` : ""}`;
+      addType(details, d);
       if (d.recorded_at) details.push(["Recorded", dateTime(d.recorded_at)]);
       if (d.parts !== undefined) details.push(["Parts", String(d.parts)]);
       break;
     case "recording.downloaded":
       text = `${actor} downloaded part ${d.part ?? ""} of the audio of ${target}'s recording${d.title ? ` "${d.title}"` : ""}`;
+      addType(details, d);
       if (d.recorded_at) details.push(["Recorded", dateTime(d.recorded_at)]);
       break;
     case "settings.models_refreshed":
@@ -148,22 +161,23 @@ export function describe(entry) {
       if (d.host) details.push(["Server", `${d.host}:${d.port}`]);
       break;
     case "template.shared_created":
-      text = `${actor} created the shared template "${d.name}"`;
+      text = `${actor} created ${templateWords(d, "shared")} "${d.name}"`;
       break;
     case "template.shared_updated":
-      text = `${actor} changed the shared template "${d.name}"`;
+      text = `${actor} changed ${templateWords(d, "shared")} "${d.name}"`;
       break;
     case "template.shared_archived":
-      text = `${actor} archived the shared template "${d.name}"`;
+      text = `${actor} archived ${templateWords(d, "shared")} "${d.name}"`;
       break;
     case "template.shared_restored":
-      text = `${actor} restored the shared template "${d.name}"`;
+      text = `${actor} restored ${templateWords(d, "shared")} "${d.name}"`;
       break;
     case "template.default_changed":
-      text = `${actor} made "${d.name}" the default template`;
+      text = `${actor} made "${d.name}" ${templateWords(d, "default")}`;
       break;
     case "scribe.deleted":
-      text = `${actor} deleted one of their recordings`;
+      text = `${actor} deleted one of their ${d.mode === "voice" ? "voice notes" : "recordings"}`;
+      addType(details, d);
       if (d.title) details.push(["Label", d.title]);
       if (d.recorded_at) details.push(["Recorded", dateTime(d.recorded_at)]);
       if (d.notes !== undefined) details.push(["Notes deleted", String(d.notes)]);
@@ -176,6 +190,7 @@ export function describe(entry) {
       break;
     case "review.record_opened":
       text = `${actor} opened ${target}'s record${d.title ? ` "${d.title}"` : ""}`;
+      addType(details, d);
       if (d.recorded_at) details.push(["Recorded", dateTime(d.recorded_at)]);
       break;
     case "review.copied":
@@ -192,7 +207,8 @@ export function describe(entry) {
       text = d.from ? `The server was updated from version ${d.from} to ${d.to}` : `The server was set up at version ${d.to}`;
       break;
     default:
-      text = `${actor}: ${entry.action}`;
+      // An activity this page does not know yet still reads as words.
+      text = `${actor} made a change: ${String(entry.action ?? "").replace(/[._]+/g, " ").trim() || "unknown"}`;
   }
   if (entry.scribe_id) details.push(["Record number", entry.scribe_id]);
   if (entry.user_agent) details.push(["Device", entry.user_agent]);

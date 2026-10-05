@@ -118,8 +118,10 @@ test.describe("iPhone", () => {
     await expect(page.locator(".clinic-chip")).toContainText("127.0.0.1:54321");
     await signInHere(page, USER);
     await expect(page.locator(".app-tabs")).toBeVisible();
-    await expect(page.locator(".content-inner h1").first()).toHaveText("Scribe");
+    await expect(page.locator(".content-inner h1").first()).toHaveText("Clinical Scribe");
     await expectNoSideScroll(page);
+    await openTab(page, "Voice Note");
+    await expect(page.locator(".mode-card.is-voice")).toHaveAttribute("aria-current", "page");
 
     // Templates: the new-template button sits in the top bar on iPhone.
     await openTab(page, "Templates");
@@ -268,13 +270,19 @@ test.describe("Android look", () => {
     await expect(mini.getByRole("button", { name: "Resume" })).toBeVisible();
     await mini.getByRole("button", { name: "Resume" }).click();
     await mini.locator(".mini-open").click();
-    await expect(page.locator(".content-inner h1").first()).toHaveText("Scribe");
+    await expect(page.locator(".content-inner h1").first()).toHaveText("Clinical Scribe");
     await page.waitForTimeout(2500);
     await page.getByRole("button", { name: "Finish" }).click();
     await expect(page.locator(".progress-card")).toBeVisible();
 
-    // History: the floating button starts a new recording; rows have swipe actions.
+    // History: the floating button starts a new recording of the tab's type; rows
+    // have swipe actions.
     await openTab(page, "History");
+    await expect(page.locator(".app-fab")).toHaveAccessibleName("New recording");
+    await page.locator(".history-tab", { hasText: "Voice Note" }).click();
+    await expect(page.locator(".app-fab")).toHaveAccessibleName("New voice note");
+    await expect(page.locator(".app-back")).toBeHidden();
+    await page.locator(".history-tab", { hasText: "Clinical Scribe" }).click();
     await expect(page.locator(".app-fab")).toBeVisible();
     const row = page.locator(".list-row").first();
     await expect(row).toBeVisible();
@@ -319,11 +327,24 @@ test.describe("Android look", () => {
     await page.getByRole("button", { name: "Connect" }).click();
     await expectNoSideScroll(page);
     await signInHere(page, ADMIN);
-    for (const name of ["Scribe", "Templates", "History", "More"]) {
+    for (const name of ["Clinical Scribe", "Voice Note", "Templates", "History", "More"]) {
       await openTab(page, name);
       await page.waitForTimeout(400);
       await expectNoSideScroll(page);
     }
+    // Five tabs at 320 px: no name is cut off, and the icons stay in one row.
+    await expect(page.locator("html")).toHaveClass(/tab-names-two-lines/);
+    const labels = page.locator(".app-tab-label");
+    await expect(labels).toHaveText(["Clinical Scribe", "Voice Note", "Templates", "History", "More"]);
+    expect(await labels.evaluateAll((items) => items.filter((item) => item.scrollWidth > item.clientWidth + 1).length)).toBe(0);
+    const fits = await page.locator(".app-tab").evaluateAll((tabs) => tabs.every((tab) => {
+      const label = tab.querySelector(".app-tab-label").getBoundingClientRect();
+      const box = tab.getBoundingClientRect();
+      return label.left >= box.left - 1 && label.right <= box.right + 1 && label.bottom <= box.bottom + 1;
+    }));
+    expect(fits, "each name stays inside its tab").toBe(true);
+    const tops = await page.locator(".app-tab-icon").evaluateAll((icons) => icons.map((icon) => Math.round(icon.getBoundingClientRect().top)));
+    expect(new Set(tops).size, "the icons stay in one row").toBe(1);
     await page.getByRole("button", { name: "Change server" }).click();
     const confirm = page.locator("dialog.sheet[open]");
     await expect(confirm).toContainText("You will be signed out of 127.0.0.1:4173 on this phone.");

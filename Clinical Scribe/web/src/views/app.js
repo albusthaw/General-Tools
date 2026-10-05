@@ -4,8 +4,10 @@ import { currentSession, loadContext, loadPublicConfig, onSessionChange, signOut
 import { h } from "../lib/dom.js";
 import { messageOf } from "../lib/errors.js";
 import { startIdleTimer } from "../lib/idle.js";
-import { abandon, attach, isRecording } from "../lib/recorder/recorder.js";
+import { modeOf } from "../lib/modes.js";
+import { abandon, attach, isRecording, recorderState } from "../lib/recorder/recorder.js";
 import { recoverInterrupted } from "../lib/recorder/recovery.js";
+import { currentRoute, href } from "../lib/router.js";
 import { store } from "../lib/store.js";
 import { forgetUser } from "../lib/uploads/idb.js";
 import * as queue from "../lib/uploads/queue.js";
@@ -121,8 +123,14 @@ async function enterApp(session) {
 
     inApp = true;
     queue.start(context.profile.id);
-    // In the Android app a recording may still be running from before.
+    // In the Android app a recording may still be running from before. It opens on
+    // its own tab (Clinical Scribe or Voice Note) when the app starts on the other one.
     await attach(context.profile.id);
+    if (isRecording()) {
+      const type = modeOf(recorderState().mode);
+      const route = currentRoute();
+      if ((route.name === "scribe" || route.name === "voice") && route.name !== type.route) window.history.replaceState(null, "", href(type.path));
+    }
     const interrupted = await recoverInterrupted(context.profile.id);
     store.set({ interrupted });
     shell = mountFrame(root, { onSignOut: requestSignOut });

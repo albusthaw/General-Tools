@@ -1,8 +1,8 @@
 // Version rules between an app and the server it connects to.
 
-// The first server version with everything the apps use (History search and
-// pages arrived in 1.4.0).
-export const MIN_SERVER_VERSION = "1.4.0";
+// The first server version with everything the apps use (Voice Note, Template
+// Types and the two History tabs arrived in 1.5.0).
+export const MIN_SERVER_VERSION = "1.5.0";
 
 export function parseVersion(value) {
   const match = /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/.exec(String(value ?? "").trim());

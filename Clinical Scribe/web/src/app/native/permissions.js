@@ -46,7 +46,7 @@ export async function beforeRecording() {
       openSettingsSheet();
       return false;
     }
-    if (!(await ask("Clinical Scribe needs the microphone to record the consultation."))) return false;
+    if (!(await ask("Clinical Scribe needs the microphone to record."))) return false;
     const result = await ScribeNative.requestMicrophone();
     if (result.microphone !== "granted") {
       if (result.microphone === "denied") openSettingsSheet();

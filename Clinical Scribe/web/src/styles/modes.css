@@ -1,0 +1,350 @@
+/* The two ways to record, Clinical Scribe and Voice Note: the pair of cards at the
+   top of the recording tabs, the type chips, the History tabs and the soft tints
+   that tell the types apart. Periwinkle is Clinical Scribe and aqua is Voice Note;
+   blue stays the one colour for actions. */
+:root {
+  --scribe-tint: var(--periwinkle-200);
+  --scribe-soft: #eef0ff;
+  --scribe-ink: #3b3f9a;
+  --voice-tint: var(--aqua-200);
+  --voice-soft: #e6f8f5;
+  --voice-ink: #0e6158;
+}
+
+/* Pair of cards at the top of both recording tabs */
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.mode-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: var(--glass);
+  box-shadow: var(--shadow-float), 0 0 0 1px var(--glass-edge);
+  color: var(--ink);
+  text-decoration: none;
+  backdrop-filter: var(--blur-card);
+  -webkit-backdrop-filter: var(--blur-card);
+  transition: transform var(--t-fast) ease, box-shadow var(--t-fast) ease, background var(--t-fast) ease;
+}
+
+.mode-card:hover {
+  transform: translateY(-1px);
+  background: var(--glass-strong);
+}
+
+.mode-card:active {
+  transform: scale(0.98);
+}
+
+.mode-card[aria-current="page"] {
+  box-shadow: var(--shadow-float), 0 0 0 2px var(--blue-600);
+}
+
+.mode-card[aria-current="page"]:hover {
+  transform: none;
+}
+
+.mode-card.is-scribe[aria-current="page"] {
+  background: linear-gradient(135deg, var(--scribe-tint), var(--scribe-soft) 75%);
+}
+
+.mode-card.is-voice[aria-current="page"] {
+  background: linear-gradient(135deg, var(--voice-tint), var(--voice-soft) 75%);
+}
+
+.mode-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+}
+
+.mode-card.is-scribe .mode-icon {
+  background: var(--scribe-tint);
+  color: var(--scribe-ink);
+}
+
+.mode-card.is-voice .mode-icon {
+  background: var(--voice-tint);
+  color: var(--voice-ink);
+}
+
+.mode-card[aria-current="page"] .mode-icon {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mode-name {
+  font-weight: 700;
+  font-size: 16.5px;
+  line-height: 1.25;
+}
+
+.mode-line {
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+
+/* Type chips on templates, recordings and records */
+.chip.mode-scribe {
+  background: var(--scribe-tint);
+  color: var(--scribe-ink);
+}
+
+.chip.mode-voice {
+  background: var(--voice-tint);
+  color: var(--voice-ink);
+}
+
+/* Recorder: a soft glow of the type's colour and a friendly hint */
+.recorder-card.is-scribe {
+  background-image: radial-gradient(120% 70% at 50% 0%, rgba(214, 220, 255, 0.55), rgba(214, 220, 255, 0) 70%);
+}
+
+.recorder-card.is-voice {
+  background-image: radial-gradient(120% 70% at 50% 0%, rgba(200, 239, 234, 0.65), rgba(200, 239, 234, 0) 70%);
+}
+
+.mode-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 440px;
+  margin-top: 4px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  color: var(--ink-2);
+  font-size: 14.5px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.mode-hint svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+
+.recorder-card.is-scribe .mode-hint {
+  background: rgba(214, 220, 255, 0.5);
+}
+
+.recorder-card.is-scribe .mode-hint svg {
+  color: var(--scribe-ink);
+}
+
+.recorder-card.is-voice .mode-hint {
+  background: rgba(200, 239, 234, 0.6);
+}
+
+.recorder-card.is-voice .mode-hint svg {
+  color: var(--voice-ink);
+}
+
+/* A recording of the other type is going on */
+.busy-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 22px;
+  text-align: center;
+}
+
+.busy-icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+}
+
+.busy-card.is-scribe .busy-icon {
+  background: var(--scribe-tint);
+  color: var(--scribe-ink);
+}
+
+.busy-card.is-voice .busy-icon {
+  background: var(--voice-tint);
+  color: var(--voice-ink);
+}
+
+.busy-text h2 {
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.busy-text p {
+  max-width: 380px;
+  margin-top: 6px;
+  color: var(--ink-2);
+}
+
+/* Templates */
+.template-card.is-scribe .template-icon {
+  background: var(--scribe-tint);
+  color: var(--scribe-ink);
+}
+
+.template-card.is-voice .template-icon {
+  background: var(--voice-tint);
+  color: var(--voice-ink);
+}
+
+.type-chips,
+.template-type-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.type-chips {
+  margin-top: 2px;
+}
+
+.template-type-line {
+  margin-bottom: 12px;
+}
+
+.type-fixed {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+}
+
+/* History: one tab for each type */
+.history-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  width: min(480px, 100%);
+  margin-bottom: 16px;
+  padding: 4px;
+  border: 1px solid rgba(19, 35, 63, 0.08);
+  border-radius: var(--radius-md);
+  background: rgba(19, 35, 63, 0.06);
+}
+
+.history-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-weight: 650;
+  font-size: 15px;
+  text-align: center;
+  text-decoration: none;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+
+.history-tab svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.history-tab:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.history-tab[aria-current="page"] {
+  background: #fff;
+  color: var(--blue-700);
+  box-shadow: var(--shadow-press);
+}
+
+.history-tab.is-scribe[aria-current="page"] svg {
+  color: var(--scribe-ink);
+}
+
+.history-tab.is-voice[aria-current="page"] svg {
+  color: var(--voice-ink);
+}
+
+.row-icon.is-scribe {
+  background: var(--scribe-tint);
+  color: var(--scribe-ink);
+}
+
+.row-icon.is-voice {
+  background: var(--voice-tint);
+  color: var(--voice-ink);
+}
+
+@media (max-width: 759px) {
+  .mode-switch {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .mode-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .mode-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+  }
+
+  .mode-icon svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .mode-name {
+    font-size: 15px;
+  }
+
+  .mode-line {
+    font-size: 12.5px;
+  }
+
+  .history-tabs {
+    width: 100%;
+  }
+
+  .history-tab {
+    padding: 0 8px;
+    font-size: 14.5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-card {
+    transition: none;
+  }
+
+  .mode-card:hover,
+  .mode-card:active {
+    transform: none;
+  }
+}

@@ -13,6 +13,7 @@ export function installAppHooks({ platform, native }) {
   appHooks.recorderExtras = (card, options) => recorderExtras(card, { ...options, platform });
   appHooks.enhanceList = (element, options) => pageState()?.enhanceList(element, options);
   appHooks.pageAction = (button) => pageState()?.setAction(button);
+  appHooks.pageParent = (path) => pageState()?.setParent(path);
   appHooks.haptic = native ? native.haptic : () => {};
   // A copy button turns into a green tick with "Copied" for a moment.
   appHooks.copied = (button) => {

@@ -2,7 +2,7 @@
 // a stated reason. The server writes every list, record and copy to the audit log
 // before returning anything.
 import { button, withBusy } from "../../components/button.js";
-import { noteCard, statusChip, transcriptCard } from "../../components/cards.js";
+import { modeChip, noteCard, statusChip, transcriptCard } from "../../components/cards.js";
 import { banner, emptyState, loading, pageHead, toast } from "../../components/feedback.js";
 import { checkbox, selectField, textArea } from "../../components/fields.js";
 import { listUsers } from "../../lib/api/admin.js";
@@ -11,7 +11,11 @@ import { h, replace } from "../../lib/dom.js";
 import { messageOf, UserError } from "../../lib/errors.js";
 import { dateTime, duration, timeOnly } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
+import { modeOf } from "../../lib/modes.js";
 import { profile } from "../../lib/store.js";
+
+// "Recording at 10:30" or "Voice note at 10:30" when a record has no label.
+const titleOf = (record) => record.title || `${modeOf(record.mode).untitled} ${timeOnly(record.started_at)}`;
 
 const WARNING_TEXT =
   "Open someone else's records only when there is a clear need, such as a clinical audit, a complaint or a safety review. Everything you open or copy is saved in the audit log with your name, the person, the record and your reason.";
@@ -134,12 +138,13 @@ export async function renderReview(container) {
                 h(
                   "button",
                   { type: "button", class: "list-row", onClick: () => showRecord(record.id) },
-                  h("span", { class: "row-icon" }, icon("noteWrite")),
+                  h("span", { class: ["row-icon", `is-${modeOf(record.mode).id}`] }, icon(modeOf(record.mode).icon)),
                   h(
                     "span",
                     { class: "row-main" },
-                    h("span", { class: "row-title", text: record.title || `Recording at ${timeOnly(record.started_at)}` }),
+                    h("span", { class: "row-title", text: titleOf(record) }),
                     h("span", { class: "row-meta" }, h("span", { text: dateTime(record.started_at) }), record.duration_seconds ? h("span", { text: duration(record.duration_seconds) }) : null, h("span", { text: `${record.note_count} ${Number(record.note_count) === 1 ? "note" : "notes"}` })),
+                    h("span", { class: "type-chips" }, modeChip(record.mode)),
                   ),
                   h("span", { class: "row-end" }, statusChip(record.status)),
                   icon("chevronRight", { className: "chev" }),
@@ -169,8 +174,8 @@ export async function renderReview(container) {
           h(
             "div",
             { class: "detail-title" },
-            h("h2", { class: "record-title", text: record.title || `Recording at ${timeOnly(record.started_at)}` }),
-            h("p", { class: "detail-meta" }, h("span", { text: dateTime(record.started_at) }), record.duration_seconds ? h("span", { text: duration(record.duration_seconds) }) : null, statusChip(record.status)),
+            h("h2", { class: "record-title", text: titleOf(record) }),
+            h("p", { class: "detail-meta" }, h("span", { text: dateTime(record.started_at) }), record.duration_seconds ? h("span", { text: duration(record.duration_seconds) }) : null, modeChip(record.mode), statusChip(record.status)),
           ),
         ),
         record.transcript ? transcriptCard(record.transcript, { collapsed: false, onCopied: () => logCopy("transcript") }) : banner({ kind: "info", text: "There is no transcript for this record." }),

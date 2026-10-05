@@ -2,6 +2,7 @@
 // part of the audio can be played or downloaded. The server writes the opening and
 // every download to the audit log, with the reason.
 import { button, withBusy } from "../../components/button.js";
+import { modeChip } from "../../components/cards.js";
 import { openDialog } from "../../components/dialog.js";
 import { banner, loading, toast } from "../../components/feedback.js";
 import { checkbox, textArea } from "../../components/fields.js";
@@ -10,6 +11,7 @@ import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { saveFile } from "../../lib/files.js";
 import { clock, dateTime } from "../../lib/format.js";
+import { modeOf } from "../../lib/modes.js";
 
 // The reason is offered again for the next recording in the same visit.
 let lastReason = "";
@@ -47,6 +49,7 @@ function partRow(row, part, count, urls) {
 
 export function openRecording(row) {
   const who = row.owner_name || row.owner_email || "this person";
+  const type = modeOf(row.mode);
   const reason = textArea("Reason", {
     rows: 3,
     maxLength: 500,
@@ -61,7 +64,7 @@ export function openRecording(row) {
     { class: "stack" },
     banner({
       kind: "warn",
-      title: `This audio belongs to ${who} and their patient`,
+      title: type.id === "voice" ? `This voice note belongs to ${who}` : `This audio belongs to ${who} and their patient`,
       text: "Open it only when there is a clear need, such as a complaint or a safety review. Your name, the time and your reason are saved in the audit log, and so is every download.",
     }),
     reason.el,
@@ -69,7 +72,7 @@ export function openRecording(row) {
   );
 
   const view = openDialog({
-    title: `Recording from ${dateTime(row.recorded_at)}`,
+    title: `${type.label} from ${dateTime(row.recorded_at)}`,
     body: [content],
     wide: true,
     onClose: () => urls.forEach((url) => URL.revokeObjectURL(url)),
@@ -100,6 +103,8 @@ export function openRecording(row) {
               { class: "facts" },
               h("dt", { text: "Clinician" }),
               h("dd", { text: opened.owner_name || who }),
+              h("dt", { text: "Type" }),
+              h("dd", {}, modeChip(opened.mode ?? row.mode)),
               opened.title ? [h("dt", { text: "Label" }), h("dd", { text: opened.title })] : null,
               h("dt", { text: "Length" }),
               h("dd", { text: clock(Number(opened.duration_seconds) || 0) }),

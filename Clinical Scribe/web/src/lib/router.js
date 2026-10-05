@@ -2,10 +2,13 @@
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
+// The recording tabs and the two History tabs carry their type (see lib/modes.js).
 export const ROUTES = [
-  { name: "scribe", pattern: /^\/scribe$/, module: "scribe", title: "Scribe" },
+  { name: "scribe", pattern: /^\/scribe$/, module: "scribe", mode: "scribe", title: "Clinical Scribe" },
+  { name: "voice", pattern: /^\/voice$/, module: "scribe", mode: "voice", title: "Voice Note" },
   { name: "templates", pattern: /^\/templates$/, module: "scribe", title: "Templates" },
-  { name: "history", pattern: /^\/history$/, module: "scribe", title: "History" },
+  { name: "history", pattern: /^\/history$/, module: "scribe", mode: "scribe", title: "History" },
+  { name: "history-voice", pattern: /^\/history\/voice$/, module: "scribe", mode: "voice", title: "History" },
   { name: "history-detail", pattern: new RegExp(`^/history/(${UUID})$`), module: "scribe", title: "History" },
   // For everyone. The old admin address still opens it. In the apps it opens from More.
   { name: "apps", pattern: /^\/(?:admin\/)?apps$/, fromMore: true, title: "Phone apps" },
