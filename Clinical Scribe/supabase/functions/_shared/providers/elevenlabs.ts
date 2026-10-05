@@ -53,6 +53,7 @@ export async function explainRefusal(error: unknown, apiKey: string, model: stri
   return new ProviderError("retention", "elevenlabs", `Zero retention refused: ${error.message}`, error.status);
 }
 
+// A conversation is split by speaker; a dictation (one person) is not.
 export async function transcribe(options: {
   apiKey: string;
   audio: Blob;
@@ -60,12 +61,13 @@ export async function transcribe(options: {
   model: string;
   language?: string;
   zeroRetention?: boolean;
+  diarize?: boolean;
   timeoutMs: number;
 }): Promise<ElevenLabsResult> {
   const form = new FormData();
   form.append("model_id", options.model);
   form.append("file", options.audio, options.filename);
-  form.append("diarize", "true");
+  form.append("diarize", options.diarize === false ? "false" : "true");
   form.append("timestamps_granularity", "word");
   form.append("tag_audio_events", "false");
   if (options.language) form.append("language_code", options.language.split("-")[0]);

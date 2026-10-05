@@ -1,7 +1,8 @@
 // A real upgrade on the local stack. The database is set back to version 1.0.0 and
 // filled with records, then brought up to date with the newer migrations, the same
 // way "supabase db push" upgrades a hosted project. Every record must still be
-// there afterwards, and the new features must work with the old records.
+// there afterwards, and the new features (up to Voice Note in 1.5.0) must work with
+// the old records.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -59,9 +60,17 @@ test("upgrading from 1.0.0 keeps every record, and the new features work with ol
   const before = counts();
   execFileSync("supabase", ["migration", "up", "--local"], { cwd: toolRoot, stdio: "ignore" });
   assert.equal(sql("select count(*) from supabase_migrations.schema_migrations"), String(migrationFiles().length), "every newer migration was applied");
-  assert.deepEqual(counts(), before, "every record is still there after the upgrade");
+  // The only new record is the shared Dictated note template, the Voice Note default (1.5.0).
+  const upgraded = counts();
+  assert.equal(upgraded["public.templates"], before["public.templates"] + 1);
+  assert.deepEqual({ ...upgraded, "public.templates": before["public.templates"] }, before, "every record is still there after the upgrade");
   assert.equal(sql(`select content from public.notes where scribe_id = '${SCRIBE}'`), "Subjective: Cough", "notes are unchanged");
   assert.equal(sql(`select transcript from public.scribes where id = '${SCRIBE}'`), "Speaker 1: Hello", "transcripts are unchanged");
+
+  // Old recordings and templates are Clinical Scribe ones; each type has its default.
+  assert.equal(sql(`select mode from public.scribes where id = '${SCRIBE}'`), "scribe");
+  assert.equal(sql("select string_agg(distinct mode, ',') from public.templates where name <> 'Dictated note'"), "scribe");
+  assert.equal(sql("select string_agg(mode || ':' || name, ',' order by mode) from public.templates where is_default"), "scribe:SOAP note,voice:Dictated note");
 
   // The deploy's own count sees the same records.
   const summary = JSON.parse(sql("select public.svc_data_summary()::text"));
@@ -77,8 +86,19 @@ test("upgrading from 1.0.0 keeps every record, and the new features work with ol
   assert.equal(old.audio_state, "kept");
   assert.equal(old.owner_name, USER.name);
 
-  // Deleting it now leaves a short record that admins see as deleted.
+  // The old recording is in the Clinical Scribe tab of History, and Voice Note
+  // templates can be made.
   const user = await signIn(USER.email, USER.password);
+  const scribeTab = await user.rpc("search_my_recordings", { p_query: "", p_page: 1, p_mode: "scribe" });
+  assert.deepEqual(scribeTab.data.items.map((item) => `${item.id}:${item.mode}`), [`${SCRIBE}:scribe`]);
+  const voiceTab = await user.rpc("search_my_recordings", { p_query: "", p_page: 1, p_mode: "voice" });
+  assert.equal(voiceTab.data.total, 0);
+  const letter = await user.rpc("save_template", {
+    p_id: null, p_name: "Letter", p_description: "", p_body: "Reason:\n[details]", p_source_request: "", p_scope: "personal", p_mode: "voice",
+  });
+  assert.equal(letter.error, null, letter.error?.message);
+
+  // Deleting it now leaves a short record that admins see as deleted.
   const deleted = await user.rpc("delete_scribe", { p_scribe_id: SCRIBE });
   assert.equal(deleted.error, null, deleted.error?.message);
   const after = await admin.rpc("admin_list_recordings", { p_audio: "deleted" });
@@ -86,4 +106,5 @@ test("upgrading from 1.0.0 keeps every record, and the new features work with ol
   assert.equal(gone.status, "deleted");
   assert.equal(gone.deleted_reason, "person");
   assert.equal(gone.owner_name, USER.name);
+  assert.equal(gone.mode, "scribe");
 });

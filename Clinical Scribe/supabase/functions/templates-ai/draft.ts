@@ -6,10 +6,11 @@ import * as deepseek from "../_shared/providers/deepseek.ts";
 import * as gemini from "../_shared/providers/gemini.ts";
 import {
   parseTemplateDraft,
-  TEMPLATE_SYSTEM,
+  type RecordingMode,
   type TemplateDraft,
   templateDraftPrompt,
   templateRevisePrompt,
+  templateSystem,
 } from "../_shared/prompts.ts";
 import { getSecret, scrub } from "../_shared/secrets.ts";
 import { adminClient, rpc } from "../_shared/supabase.ts";
@@ -35,12 +36,12 @@ async function settings(): Promise<{ provider: ProviderName; model: string }> {
     : { provider: "gemini", model: data.gemini_template_model };
 }
 
-async function ask(provider: ProviderName, model: string, apiKey: string, prompt: string) {
+async function ask(provider: ProviderName, model: string, apiKey: string, system: string, prompt: string) {
   if (provider === "deepseek") {
     const result = await deepseek.chat({
       apiKey,
       model,
-      system: TEMPLATE_SYSTEM,
+      system,
       user: prompt,
       json: true,
       maxTokens: 4096,
@@ -50,7 +51,7 @@ async function ask(provider: ProviderName, model: string, apiKey: string, prompt
   }
   const interaction = await gemini.createInteraction(apiKey, {
     model,
-    system_instruction: TEMPLATE_SYSTEM,
+    system_instruction: system,
     input: prompt,
     generation_config: { thinking_level: "low", max_output_tokens: 4096 },
     response_format: {
@@ -75,8 +76,11 @@ async function ask(provider: ProviderName, model: string, apiKey: string, prompt
   return { text: gemini.interactionText(interaction), inputTokens: usage.inputTokens, outputTokens: usage.outputTokens };
 }
 
+// The Template Type decides what the template will be filled in from: a
+// conversation (Clinical Scribe) or one person's dictation (Voice Note).
 export async function draftTemplate(
   caller: Caller,
+  type: RecordingMode,
   request: { mode: "draft"; description: string } | { mode: "revise"; current: TemplateDraft; changes: string },
 ): Promise<TemplateDraft> {
   const used = await rpc<number>("svc_template_drafts_last_hour", { p_user: caller.id });
@@ -100,7 +104,7 @@ export async function draftTemplate(
   try {
     // One more try if the answer cannot be read as a template.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const answer = await ask(provider, model, apiKey, prompt);
+      const answer = await ask(provider, model, apiKey, templateSystem(type), prompt);
       tokens = answer;
       const draft = parseTemplateDraft(answer.text);
       if (draft) {

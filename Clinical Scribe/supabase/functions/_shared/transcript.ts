@@ -1,9 +1,18 @@
-// Turns word-level speaker labels into readable "Speaker 1: ..." lines.
+// Turns word-level speaker labels into readable "Speaker 1: ..." lines, or, for a
+// Voice Note, into plain text.
 
 export interface LabelledWord {
   text: string;
   type?: string;
   speaker: string | null;
+}
+
+// Adds one word (or a spacing entry) to the text being built.
+function appendWord(buffer: string, word: LabelledWord): string {
+  if (word.type === "spacing") return buffer + (word.text || " ");
+  // Words without explicit spacing entries (some services) need a space between them.
+  const needsSpace = buffer.length > 0 && !/\s$/.test(buffer) && !/^[.,!?;:%)\]]/.test(word.text);
+  return buffer + (needsSpace ? " " : "") + word.text;
 }
 
 // Speakers are numbered in the order they first speak.
@@ -26,22 +35,27 @@ export function buildSpeakerTranscript(words: LabelledWord[], fallback: string):
   };
 
   for (const word of spoken) {
-    const isSpacing = word.type === "spacing";
-    if (!isSpacing && word.speaker && word.speaker !== current) {
+    if (word.type !== "spacing" && word.speaker && word.speaker !== current) {
       flush();
       current = word.speaker;
       if (!numbers.has(current)) numbers.set(current, numbers.size + 1);
     }
-    if (isSpacing) {
-      buffer += word.text || " ";
-    } else {
-      // Words without explicit spacing entries (some services) need a space between them.
-      const needsSpace = buffer.length > 0 && !/\s$/.test(buffer) && !/^[.,!?;:%)\]]/.test(word.text);
-      buffer += (needsSpace ? " " : "") + word.text;
-    }
+    buffer = appendWord(buffer, word);
   }
   flush();
   return lines.join("\n");
+}
+
+// A Voice Note has one speaker, so its transcript never carries speaker labels,
+// even when a service marks the words with speakers anyway.
+export function buildPlainTranscript(words: LabelledWord[], fallback: string): string {
+  const text = tidy(fallback);
+  if (text) return text;
+  let buffer = "";
+  for (const word of words) {
+    if (word.type !== "audio_event") buffer = appendWord(buffer, word);
+  }
+  return tidy(buffer);
 }
 
 function tidy(text: string): string {

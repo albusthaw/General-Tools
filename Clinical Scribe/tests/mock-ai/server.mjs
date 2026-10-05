@@ -71,9 +71,26 @@ const CONVERSATION = [
   ["speaker_0", "Your temperature is 37.9 and your chest sounds clear. I think this is a viral infection. Take paracetamol 1 gram up to four times a day and come back if it gets worse."],
 ];
 
-function elevenWords() {
+// A fixed dictation (one speaker, spoken punctuation) for Voice Notes.
+const DICTATION = "Blood pressure review full stop Reading today 128 over 82 full stop Continue ramipril 5 milligrams once a day full stop New paragraph Review in three months";
+
+// The marks that show which instructions a request carried.
+const DICTATION_RULES = /dictation by one clinician speaking alone/;
+const DICTATION_TRANSCRIBE = /transcribe a clinician's dictation/i;
+const DICTATION_TEMPLATE = /fill in from the clinician's own dictation/;
+
+function elevenWords(diarize = true) {
   const words = [];
   let t = 0;
+  if (!diarize) {
+    // Without speaker separation the words carry no speaker.
+    for (const word of DICTATION.split(" ")) {
+      words.push({ text: word, type: "word", start: t, end: t + 0.3, logprob: -0.1 });
+      words.push({ text: " ", type: "spacing", start: t + 0.3, end: t + 0.35, logprob: 0 });
+      t += 0.35;
+    }
+    return words;
+  }
   for (const [speaker, sentence] of CONVERSATION) {
     const parts = sentence.split(" ");
     parts.forEach((word, i) => {
@@ -97,16 +114,34 @@ function headingsFrom(text) {
     .map((line) => line.slice(0, -1));
 }
 
-function noteFor(prompt) {
+function noteFor(prompt, dictation = false) {
   const headings = headingsFrom(prompt);
   const list = headings.length ? headings : ["Summary"];
-  return list
-    .map((heading, i) => `${heading}:\n${i === 0 ? "- Cough for two weeks with mild fever since Monday." : i === 1 ? "- Temperature 37.9. Chest clear." : "- Viral infection likely. Paracetamol 1 g up to four times a day; return if worse."}`)
-    .join("\n\n");
+  const lines = dictation
+    ? ["- Blood pressure review.", "- Reading today 128/82. Continue ramipril 5 mg once a day.", "- Review in three months."]
+    : ["- Cough for two weeks with mild fever since Monday.", "- Temperature 37.9. Chest clear.", "- Viral infection likely. Paracetamol 1 g up to four times a day; return if worse."];
+  return list.map((heading, i) => `${heading}:\n${lines[Math.min(i, 2)]}`).join("\n\n");
 }
 
-function templateFor(prompt) {
+function templateFor(prompt, dictation = false) {
   const wantsChanges = prompt.includes("<changes>");
+  if (dictation) {
+    return JSON.stringify({
+      name: wantsChanges ? "Clinic letter (revised)" : "Clinic letter",
+      description: "A letter to the family doctor after a clinic visit.",
+      body: [
+        "Reason for the letter:",
+        "[Why the patient was seen and by whom.]",
+        "",
+        "Findings:",
+        "[What the clinician dictated about the history, examination and results.]",
+        "",
+        "Plan:",
+        "[Treatment, changes to medicines, tests and follow-up.]",
+        wantsChanges ? "\nRequests for the family doctor:\n[Anything the family doctor is asked to do.]" : "",
+      ].join("\n"),
+    });
+  }
   return JSON.stringify({
     name: wantsChanges ? "Medical clerking note (revised)" : "Medical clerking note",
     description: "Full admission clerking for a new patient.",
@@ -142,13 +177,19 @@ function textOf(input) {
 function completedInteraction(id, body) {
   const model = String(body.model ?? "");
   const prompt = textOf(body.input);
+  const system = String(body.system_instruction ?? "");
   const usage = { total_input_tokens: 1200, total_output_tokens: 300, input_tokens_by_modality: [] };
   if (/transcribe/.test(model)) {
+    usage.input_tokens_by_modality = [{ modality: "AUDIO", tokens: 32 * 20 }];
+    // Without the speaker setting the model hears one person: the dictation.
+    if (!body.generation_config?.transcription_config?.mode?.diarization_mode) {
+      const annotations = DICTATION.split(" ").map((word) => ({ type: "word_info", text: word }));
+      return { id, status: "completed", steps: [{ type: "model_output", content: [{ type: "text", text: DICTATION, annotations }] }], usage };
+    }
     const annotations = [];
     for (const [speaker, sentence] of CONVERSATION) {
       for (const word of sentence.split(" ")) annotations.push({ type: "word_info", text: word, speaker: speaker === "speaker_0" ? "spk_1" : "spk_2" });
     }
-    usage.input_tokens_by_modality = [{ modality: "AUDIO", tokens: 32 * 20 }];
     return {
       id,
       status: "completed",
@@ -157,11 +198,13 @@ function completedInteraction(id, body) {
     };
   }
   let text;
-  if (body.response_format) text = templateFor(prompt);
+  if (body.response_format) text = templateFor(prompt, DICTATION_TEMPLATE.test(system));
   else if (Array.isArray(body.input) && body.input.some((part) => part.type === "audio")) {
-    text = CONVERSATION.map(([speaker, sentence]) => `${speaker === "speaker_0" ? "Clinician" : "Patient"}: ${sentence}`).join("\n");
+    text = DICTATION_TRANSCRIBE.test(system)
+      ? DICTATION
+      : CONVERSATION.map(([speaker, sentence]) => `${speaker === "speaker_0" ? "Clinician" : "Patient"}: ${sentence}`).join("\n");
     usage.input_tokens_by_modality = [{ modality: "AUDIO", tokens: 32 * 20 }];
-  } else text = noteFor(prompt);
+  } else text = noteFor(prompt, DICTATION_RULES.test(system));
   return {
     id,
     status: "completed",
@@ -262,6 +305,11 @@ async function handle(req, res) {
   // ---- Gemini Interactions API
   if (path === "/v1beta/interactions" && req.method === "POST") {
     const body = JSON.parse(raw.toString() || "{}");
+    // Which instructions the request carried, for the tests to check.
+    const system = String(body.system_instruction ?? "");
+    entry.dictation = DICTATION_RULES.test(system) || DICTATION_TRANSCRIBE.test(system) || DICTATION_TEMPLATE.test(system);
+    const transcription = body.generation_config?.transcription_config;
+    if (transcription) entry.diarization = transcription.mode?.diarization_mode ?? "none";
     const audio = Array.isArray(body.input) ? body.input.find((part) => part.type === "audio") : null;
     if (audio && typeof audio.data === "string") {
       // Audio sent inline (the model test): it must be base64 WAV.
@@ -298,15 +346,19 @@ async function handle(req, res) {
     if (!type.startsWith("multipart/form-data")) return send(res, 400, { detail: { message: "multipart required" } });
     const bodyText = raw.toString("latin1");
     const model = (bodyText.match(/name="model_id"\r\n\r\n([^\r]+)/) ?? [])[1] ?? "";
+    const diarize = (bodyText.match(/name="diarize"\r\n\r\n([^\r]+)/) ?? [])[1] ?? "";
+    entry.diarize = diarize;
     if (!/^scribe_/.test(model)) return send(res, 400, { detail: { status: "invalid_model", message: `Model ${model} is not found or not supported` } });
     if (bodyText.includes('filename="check.wav"')) {
       return send(res, 200, { language_code: "en", language_probability: 0.5, text: "", words: [], audio_duration_secs: 1 });
     }
-    const words = elevenWords();
+    // Without speaker separation ElevenLabs hears one person: the dictation.
+    const oneVoice = diarize === "false";
+    const words = elevenWords(!oneVoice);
     return send(res, 200, {
       language_code: "en",
       language_probability: 0.99,
-      text: CONVERSATION.map((c) => c[1]).join(" "),
+      text: oneVoice ? DICTATION : CONVERSATION.map((c) => c[1]).join(" "),
       words,
       transcription_id: `t${++counter}`,
       audio_duration_secs: 20.5,
@@ -320,7 +372,9 @@ async function handle(req, res) {
   if (path === "/chat/completions" && req.method === "POST") {
     const body = JSON.parse(raw.toString() || "{}");
     const user = String(body.messages?.find((m) => m.role === "user")?.content ?? "");
-    const text = body.response_format ? templateFor(user) : noteFor(user);
+    const system = String(body.messages?.find((m) => m.role === "system")?.content ?? "");
+    entry.dictation = DICTATION_RULES.test(system) || DICTATION_TEMPLATE.test(system);
+    const text = body.response_format ? templateFor(user, DICTATION_TEMPLATE.test(system)) : noteFor(user, DICTATION_RULES.test(system));
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
     const pieces = text.match(/.{1,40}/gs) ?? [];
     for (const piece of pieces) {

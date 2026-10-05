@@ -6,10 +6,10 @@ import { ProviderError } from "../../_shared/errors.ts";
 import * as elevenlabs from "../../_shared/providers/elevenlabs.ts";
 import * as gemini from "../../_shared/providers/gemini.ts";
 import { sleep } from "../../_shared/providers/request.ts";
-import { TRANSCRIBE_SYSTEM } from "../../_shared/prompts.ts";
+import { type RecordingMode, recordingMode, transcribeSystem } from "../../_shared/prompts.ts";
 import { getSecret } from "../../_shared/secrets.ts";
 import { adminClient, rpc } from "../../_shared/supabase.ts";
-import { buildSpeakerTranscript } from "../../_shared/transcript.ts";
+import { buildPlainTranscript, buildSpeakerTranscript, type LabelledWord } from "../../_shared/transcript.ts";
 import { runGeminiInteraction } from "../gemini-flow.ts";
 import { downloadAudio } from "../storage.ts";
 import { FINISHED, type Job, type JobContext, JobError, later, type Outcome } from "../types.ts";
@@ -31,6 +31,7 @@ interface Segment {
 interface ScribeInfo {
   id: string;
   owner_id: string;
+  mode: RecordingMode;
   status: string;
   provider: "elevenlabs" | "gemini";
   model: string;
@@ -61,10 +62,11 @@ export async function transcribeSegment(job: Job, ctx: JobContext): Promise<Outc
   const { data: scribe } = segment
     ? await db
       .from("scribes")
-      .select("id, owner_id, status, provider, model, language, zero_retention")
+      .select("id, owner_id, mode, status, provider, model, language, zero_retention")
       .eq("id", segment.scribe_id)
       .maybeSingle<ScribeInfo>()
     : { data: null };
+  if (scribe) scribe.mode = recordingMode(scribe.mode);
 
   // The recording was deleted or stopped: nothing to do.
   if (!segment || !scribe || scribe.status !== "processing") {
@@ -111,6 +113,11 @@ export async function transcribeSegment(job: Job, ctx: JobContext): Promise<Outc
     : await withGemini(job, ctx, segment, scribe, audio);
 }
 
+// A conversation becomes "Speaker 1: …" lines; a Voice Note is plain text.
+function transcriptFor(mode: RecordingMode, words: LabelledWord[], text: string): string {
+  return mode === "voice" ? buildPlainTranscript(words, text) : buildSpeakerTranscript(words, text);
+}
+
 // What the person sees when a part cannot be processed for its length.
 const MEASURE_MESSAGES: Record<string, string> = {
   not_enough_credit: "There are not enough transcription minutes for the real length of this recording. Ask your administrator to add more, then use Try again.",
@@ -134,12 +141,14 @@ async function withElevenLabs(job: Job, ctx: JobContext, segment: Segment, scrib
       model: scribe.model,
       language: scribe.language,
       zeroRetention: scribe.zero_retention,
+      diarize: scribe.mode !== "voice",
       timeoutMs: Math.max(30_000, Math.min(150_000, ctx.remaining() - 5000)),
     });
   } catch (error) {
     throw scribe.zero_retention ? await elevenlabs.explainRefusal(error, apiKey, scribe.model) : error;
   }
-  const transcript = buildSpeakerTranscript(
+  const transcript = transcriptFor(
+    scribe.mode,
     result.words.map((word) => ({ text: word.text, type: word.type, speaker: word.speaker_id ?? null })),
     result.text,
   );
@@ -155,7 +164,7 @@ async function withElevenLabs(job: Job, ctx: JobContext, segment: Segment, scrib
   return FINISHED;
 }
 
-function transcriptionBody(model: string, uri: string, mime: string, language: string): Record<string, unknown> {
+function transcriptionBody(model: string, uri: string, mime: string, language: string, mode: RecordingMode): Record<string, unknown> {
   if (gemini.isTranscribeModel(model)) {
     return {
       model,
@@ -163,17 +172,21 @@ function transcriptionBody(model: string, uri: string, mime: string, language: s
       generation_config: {
         transcription_config: {
           language_codes: language ? [language] : [],
-          // Word timings are what carry the speaker labels.
-          mode: { type: "verbatim", diarization_mode: "speaker", timestamp_granularities: ["word"] },
+          // A conversation: word timings carry the speaker labels. A Voice Note has
+          // one speaker, so it is transcribed word for word without them.
+          mode: mode === "voice"
+            ? { type: "verbatim" }
+            : { type: "verbatim", diarization_mode: "speaker", timestamp_granularities: ["word"] },
         },
       },
     };
   }
+  const what = mode === "voice" ? "this dictation" : "this recording";
   return {
     model,
-    system_instruction: TRANSCRIBE_SYSTEM,
+    system_instruction: transcribeSystem(mode),
     input: [
-      { type: "text", text: language ? `Transcribe this recording. Its main language is ${language}.` : "Transcribe this recording." },
+      { type: "text", text: language ? `Transcribe ${what}. Its main language is ${language}.` : `Transcribe ${what}.` },
       { type: "audio", uri, mime_type: mime },
     ],
     generation_config: { thinking_level: "low", max_output_tokens: 32768 },
@@ -213,14 +226,16 @@ async function withGemini(job: Job, ctx: JobContext, segment: Segment, scribe: S
       ctx,
       apiKey,
       state,
-      () => transcriptionBody(scribe.model, String(state.file_uri), mime, scribe.language),
+      () => transcriptionBody(scribe.model, String(state.file_uri), mime, scribe.language, scribe.mode),
     );
     if (!flow.done) return later(5, flow.state);
 
     const interaction = flow.interaction;
     const text = gemini.interactionText(interaction);
     const transcript = gemini.isTranscribeModel(scribe.model)
-      ? buildSpeakerTranscript(gemini.interactionWords(interaction), text)
+      ? transcriptFor(scribe.mode, gemini.interactionWords(interaction), text)
+      : scribe.mode === "voice"
+      ? buildPlainTranscript([], text)
       : text.trim();
     const usage = gemini.interactionUsage(interaction);
     const seconds = gemini.audioSecondsFromTokens(usage.audioTokens);
