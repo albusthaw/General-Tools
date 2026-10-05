@@ -166,6 +166,7 @@ No file grows into a "god file": the app frame, each gesture, each sheet type an
 | `recorderExtras(card)` | `views/scribe/record.js` | Adds the sound ring and the one-hand recorder layout |
 | `enhancePicker(select, { title })` | `views/scribe/record.js` | A long choice (the note template) opens a sheet; with 7 or more choices it has a search field |
 | `pageAction(button)` | Templates | The page's main button moves to the top bar ("+" on iPhone) or the floating button (Android) |
+| `pageParent(path)` | History detail | Where the back button and the Android back gesture lead once the page knows the record's type: the Clinical Scribe or the Voice Note tab of History (from 1.5.0) |
 | `beforeRecording()` | `views/scribe/record.js` | Android: explains and asks for the microphone, then notifications |
 | `copied(button)` | copy buttons | The button turns into a green "Copied" tick instead of a toast |
 | `saveFile(blob, name)` | CSV export, audio download | Android: the system "Save to…" screen; the file is sent in parts of 768 KB |
@@ -245,6 +246,7 @@ The same button is offered in Android browsers. The Android app does not need it
 - `VERSION` stays the single version: the website, the server, the app build and the Android app all show it.
 - Android `versionName` = `VERSION`; `versionCode` = major × 10000 + minor × 100 + patch (1.2.0 → 10200).
 - App id: `io.github.albusthaw.clinicalscribe` (based on the owner's GitHub Pages address).
+- `MIN_SERVER_VERSION` (`lib/connection/versions.js`) is the oldest server the apps work with: 1.5.0 from Voice Note on. A 1.4 app still works with a 1.5 server, because every new server parameter has a default; it records Clinical Scribe and sees all recordings in one History list.
 
 ### 7.2 Android build
 
@@ -323,3 +325,13 @@ Needs JDK 21, Node 22 and the Android SDK (platform 36, build tools 36). GitHub'
 - **Android phones with strict battery savers** (some brands) may still stop apps in the background. The README says how to allow Clinical Scribe to run.
 - **Android installs outside Google Play**: from 30 September 2026, Brazil, Indonesia, Singapore and Thailand allow such installs only from developers verified with Google (more countries from 2027). Publishing widely may need the owner to register as a developer with Google; Google Play publishing is not part of this work.
 - **Testing**: this environment has no Android emulator or iPhone, so the checks marked "real phone" in section 9 must be done on a device.
+
+## 12. Version 1.5.0: Voice Note in the apps
+
+The plan is in `Voicenote.md`. For the apps:
+
+- **Tabs.** Five tabs: Clinical Scribe, Voice Note, Templates, History, More (`app/tab-bar.js`; the tablet side bar follows the same list). The bar has one column per tab. When a name needs two lines, `lib/tab-names.js` sets `tab-names-two-lines` on the page: every name keeps room for two lines and the bar grows (68 px on iPhone, 80 px on Android), so the icons stay in one row and no name is cut off. The website's phone tab bar (four tabs) uses the same helper.
+- **Recorder.** The recorder keeps the recording's type in its state and in the recording saved on the phone, so the Android app reopens a Voice Note on the Voice Note tab, interrupted recordings return on their own tab, and the mini recorder leads back to the right tab and hides only there.
+- **Navigation.** History has `/history` and `/history/voice`. The detail page tells the frame where its back button leads (`pageParent`). The Android floating button on History offers **New recording** or **New voice note**. The back gesture still returns to the Clinical Scribe tab before leaving the app.
+- **Wording.** The microphone sheet says "Clinical Scribe needs the microphone to record.", which fits both ways to record. The native recorder and its notification were already neutral and do not change.
+- **Tests.** Browser: the five-tab bar at 320 px (no cut names, icons in one row, no sideways scrolling), the Voice Note tab, the floating button on each History tab. Android: the build, unit tests and lint run as before.

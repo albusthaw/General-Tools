@@ -47,11 +47,12 @@ This plan builds on `design.md` (brand, colours, fonts, glass rules, accessibili
 
 ### 4.1 Destinations
 
-Both apps have four tabs, in the same order as the website:
+Both apps have five tabs (from 1.5.0), in the same order as the website:
 
 | Tab | Icon | Contents |
 | --- | --- | --- |
-| **Scribe** | microphone | New recording, live recording, processing, the finished note |
+| **Clinical Scribe** | two speech bubbles | A conversation between two or more people: new recording, live recording, processing, the finished note |
+| **Voice Note** | microphone with sound lines | One person dictating: the same recorder, with Voice Note templates |
 | **Templates** | template | Shared and personal templates, the template helper |
 | **History** | clock | Recordings by day, search, details, more notes |
 | **More** | person in a circle | Your details, password, server, Admin settings (admins only), version, sign out |
@@ -61,14 +62,14 @@ Admin pages open from **More → Admin settings** as pages that slide in, each w
 ### 4.2 Screen flow
 
 ```
-First launch ─► Connect (server link) ─► Confirm server ─► Sign in ─► Scribe tab
+First launch ─► Connect (server link) ─► Confirm server ─► Sign in ─► Clinical Scribe tab
                      ▲                                       │
                      └──────── More → Change server ◄────────┘
 
 iPhone, in Safari ─► "Add to Home Screen" steps ─► (opens from the Home Screen) ─► Connect …
 ```
 
-Later launches go straight to the Scribe tab (or to Sign in when the session has ended).
+Later launches go straight to the Clinical Scribe tab (or to Sign in when the session has ended). When the Android app reopens while a Voice Note is still recording, it opens on the Voice Note tab.
 
 ## 5. Screens
 
@@ -89,20 +90,22 @@ Later launches go straight to the Scribe tab (or to Sign in when the session has
 - Above the form, a small glass chip shows the connected clinic with **Change** next to it.
 - iPhone: fields sit together in one inset rounded group, iOS style. Android: the website's field style, with a slightly larger touch height (56 px).
 
-### 5.3 Scribe: ready
+### 5.3 Clinical Scribe and Voice Note: ready
 
-- Large title **Scribe**, with the minutes left as a chip in the top bar.
-- Card **New recording**:
+- Large title **Clinical Scribe** or **Voice Note**, with the minutes left as a chip in the top bar.
+- Under the title, the pair of type cards from the website (`design.md`, section 7), side by side, so the difference is clear at a glance and the other tab is one tap away.
+- Card **New recording** (or **New voice note**), with only the templates of that type:
   - **Note template** as a tappable row showing the chosen template. Tapping opens a sheet with a search field and the template list (Shared, then Mine). The last used template is remembered, as on the website.
   - **Label (optional)** field.
 - The record button: 128 px circle in the primary gradient, with a slow "breathing" glow ring. Under it: "Start recording".
 - Warnings use the website's banners (no transcription set up, no minutes left, interrupted recordings).
 
-### 5.4 Scribe: recording
+### 5.4 Recording (both tabs)
 
 The recorder fills the screen, so it is easy to use with one hand and readable from a distance.
 
-- At the top: red dot and **Recording** (or **Paused**), then the template name and label.
+- At the top: red dot and **Recording** (or **Paused**), then the type chip, the template name and the label.
+- Only one recording runs at a time. The other recording tab shows "A Voice Note is being recorded" (or "A Clinical Scribe recording is going on") with **Go to the recording**.
 - In the middle: the timer in large tabular digits (56 px). Around the central control, a **sound ring** grows and shrinks with the voice level, so people can see the phone is listening. When paused, the ring turns grey and still.
 - The central circle (96 px) is **Pause** (or **Resume**). Below it, a wide primary capsule **Finish**. Below that, the quiet **Discard** text button, which always asks for confirmation.
 - Android: "Recording carries on when the screen is off." under the controls, and a recording notification with **Pause** or **Resume** (section 7.2). The screen may turn off as usual.
@@ -120,32 +123,32 @@ The recorder fills the screen, so it is easy to use with one hand and readable f
   The Android notification shows the reason in short: "Paused for a call · 4:05" and "Tap Resume when the call has ended".
 - Motion: on press, Pause and Finish change shape on Android (round to rounded square and back) and scale with a spring on iPhone. Starting, pausing, resuming and finishing each give a short vibration on Android.
 
-### 5.5 Scribe: processing and note
+### 5.5 Processing and note (both tabs)
 
 - The website's four steps (Saving audio → Transcribing → Writing note → Ready) shown as a vertical list with a moving indicator on the current step: a wavy line on Android, a smooth spinner on iPhone.
 - The note card, then the transcript card (closed by default), then **Write another note**, which opens a template sheet.
 - **Copy note** and **Copy transcript**: the button turns into a green tick with "Copied" for a moment.
-- **New recording** at the bottom.
+- **New recording** (or **New voice note**) at the bottom.
 
 ### 5.6 Templates
 
 - Large title **Templates**. A segmented control **Shared | Mine** sits under the title (a sliding glass thumb on iPhone; Material segmented buttons with a tick on Android).
-- Template cards as on the website. Tap opens the template in a sheet. Personal templates have **Edit** and **Delete** (any of them, also one that has already written notes). For admins, shared templates have **Edit**, **Make default** and **Archive**, and their own personal templates also have **Share with everyone** (from 1.4.0).
-- Create: the "+" glass button in the navigation bar (iPhone) or the floating **Create template** button (Android) opens the template helper as a full-height sheet. For admins, the first step asks who can use it: **Everyone in the clinic** (chosen first) or **Only me**.
+- Template cards as on the website, each with its type chip. Tap opens the template in a sheet. Personal templates have **Edit** and **Delete** (any of them, also one that has already written notes). For admins, shared templates have **Edit**, **Make default** and **Archive**, and their own personal templates also have **Share with everyone** (from 1.4.0).
+- Create: the "+" glass button in the navigation bar (iPhone) or the floating **Create template** button (Android) opens the template helper as a full-height sheet. The first step asks for the **Template Type** (Clinical Scribe or Voice Note); for admins it then asks who can use it: **Everyone in the clinic** (chosen first) or **Only me**.
 - Pull down to refresh.
 
 ### 5.7 History
 
-- Large title **History**, search field under it (on iPhone it slides up with the title). The search finds labels, transcripts and notes in every recording, not only the page shown, and says how many were found; a match inside a transcript or note shows a short extract under the title.
+- Large title **History**, then two tabs, **Clinical Scribe** and **Voice Note**, each with its own search and page (from 1.5.0), then the search field (on iPhone it slides up with the title). The search finds labels, transcripts and notes in every recording, not only the page shown, and says how many were found; a match inside a transcript or note shows a short extract under the title.
 - Ten recordings per page, grouped by day with headers that stay in place while scrolling: **Today**, **Yesterday**, then dates. Under the list: **Previous**, "Page 2 of 14" and **Next**, large enough for a thumb (from 1.4.0).
-- Each row: label (or time), time and length, status chip, number of notes.
+- Each row: the type's tinted icon, label (or time), time and length, status chip, number of notes.
 - Gestures: swipe left for **Rename** (blue) and **Delete** (red, asks for confirmation); long press for a menu (Open, Rename, Delete); pull down to refresh.
-- Android: floating **New recording** button that shrinks to a round button while scrolling.
+- Android: floating **New recording** button (**New voice note** on the Voice Note tab) that shrinks to a round button while scrolling.
 - Empty state: "No recordings yet" with a **Start recording** button.
 
 ### 5.8 History detail
 
-- Top bar with a back button ("‹ History" glass capsule on iPhone, back arrow on Android), the label or time as the title, and a "⋯" menu with Rename and Delete.
+- Top bar with a back button ("‹ History" glass capsule on iPhone, back arrow on Android) that leads to the History tab of the record's type, the label or time as the title, a type chip next to the date, and a "⋯" menu with Rename and Delete.
 - Then the same content as the website: transcript card, **Write another note** (template sheet), then the notes. Each note is a card that opens and closes; the header shows the template name, when it was written and **Copy note**. Only the newest note is open at first. With two or more notes, **Newest first** / **Oldest first** changes the order (from 1.4.0).
 
 ### 5.9 More
@@ -175,10 +178,10 @@ A page that helps staff get the apps. From 1.4.0 everyone can open it: on the we
 
 | Component | Behaviour |
 | --- | --- |
-| Tab bar | iPhone: floating glass capsule, 64 px high, 16 px from the screen edges, above the home indicator. The selected tab sits in a glass "lens" pill. While scrolling down it shrinks to a smaller capsule; scrolling up restores it. Android: docked bar, 72 px plus the system navigation area, active tab shown by a pill behind the icon. |
+| Tab bar | iPhone: floating glass capsule, 64 px high, 16 px from the screen edges, above the home indicator. The selected tab sits in a glass "lens" pill. While scrolling down it shrinks to a smaller capsule; scrolling up restores it. Android: docked bar, 76 px plus the system navigation area, active tab shown by a pill behind the icon. With five tabs a long name such as "Clinical Scribe" takes two lines on narrow phones instead of being cut off; every name then keeps room for two lines and the bar grows a little (68 px on iPhone, 80 px on Android), so the icons stay in one row. |
 | Navigation bar with large title | Large title at rest; when the page scrolls 40 px, the title moves into a small centred (iPhone) or left-aligned (Android) title in a glass bar. Back button on pushed pages. Optional action buttons on the right. |
 | Sheet | Slides up from the bottom; grabber (iPhone) or drag handle (Android); drag down or tap the dimmed page to close; half height and full height. Focus stays inside; Escape and the Android back gesture close it. Replaces dialogs inside the apps. |
-| Mini recorder | Glass capsule above the tab bar while a recording is running and the Scribe tab is not open: red dot, "Recording 03:21" (or "Paused"), Pause or Resume button. Tap anywhere else on it to return to Scribe. |
+| Mini recorder | Glass capsule above the tab bar while a recording is running and its own tab is not open: red dot, "Recording 03:21" (or "Paused"), Pause or Resume button. Tap anywhere else on it to return to the recording's tab (Clinical Scribe or Voice Note). |
 | Floating action button (Android) | 56 px rounded square, primary gradient, icon plus label when extended; shrinks to the icon while scrolling down. |
 | Swipe row | Swipe left to reveal actions; nothing happens until an action is tapped, so a long swipe never deletes by accident. The click the browser sends for the swipe or long press itself is dropped; the next tap always works. Actions are also in the long-press menu and on the item's own page, so nothing depends on swiping alone. |
 | List picker | A long choice, such as the note template, opens a sheet instead of a small drop-down list. With 7 or more choices the sheet is tall and has a search field. |
@@ -213,19 +216,19 @@ A page that helps staff get the apps. From 1.4.0 everyone can open it: on the we
 - **Shapes and motion** (Material 3 Expressive): fully round buttons that briefly become rounded squares when pressed; the floating button grows and shrinks with a spring; pages fade and slide in; the processing step shows a wavy progress line.
 - **Vibration**: a light tick for tab changes and pull to refresh; a firmer tap for starting, pausing, resuming and finishing a recording; a double buzz for errors.
 - **Edge to edge**: the app draws under the status and navigation bars and pads its bars by the system insets.
-- **Back gesture**: closes a sheet or menu first, then goes back a page, then returns to the Scribe tab; from the Scribe tab it leaves the app (a recording keeps running in the background).
+- **Back gesture**: closes a sheet or menu first, then goes back a page, then returns to the Clinical Scribe tab; from the Clinical Scribe tab it leaves the app (a recording keeps running in the background).
 - **Recording notification**: while recording: "Recording · 12:34" with **Pause**; while paused: "Paused · 12:34" with **Resume**. Tapping it opens the recorder. It disappears when the recording finishes.
 - **App icon**: white waveform on the blue gradient, as an adaptive icon, plus a one-colour version for themed icons. **Launch screen**: the icon on the brand background (Android 12 and newer show it automatically).
 - **Privacy**: the app's screens are hidden in the recent apps view, and screenshots of patient records are blocked.
-- **Permissions**: before Android's own question, a short sheet explains why: "Clinical Scribe needs the microphone to record the consultation." and, for the notification, "Allow notifications to see and pause the recording when the screen is off." If the person refuses, the recorder explains how to allow it in Settings.
+- **Permissions**: before Android's own question, a short sheet explains why: "Clinical Scribe needs the microphone to record." and, for the notification, "Allow notifications to see and pause the recording when the screen is off." If the person refuses, the recorder explains how to allow it in Settings.
 
 ## 8. Responsive layout
 
 | Width | App layout |
 | --- | --- |
-| Up to 380 px (small phones) | Record button 112 px; timer 48 px; tab labels stay; long titles wrap to two lines. |
+| Up to 380 px (small phones) | Record button 112 px; timer 48 px; tab labels stay, and long tab names take two lines; long titles wrap to two lines. |
 | 381–899 px (phones, small tablets) | The design above. Content up to 640 px wide, centred. |
-| 900 px and wider (tablets, windows) | Glass side bar with the four destinations and Admin settings; content column up to 1120 px; sheets become centred dialogs; the mini recorder sits at the top of the side bar. |
+| 900 px and wider (tablets, windows) | Glass side bar with the four destinations (Clinical Scribe, Voice Note, Templates, History), Phone apps and Admin settings; content column up to 1120 px; sheets become centred dialogs; the mini recorder sits at the top of the side bar. |
 | Landscape phones | Recorder controls sit beside the timer instead of under it; tab bar stays. |
 
 Every screen is checked at 320, 360, 390, 402, 430, 768 and 1024 px widths, in portrait and landscape, with no sideways scrolling.
@@ -250,13 +253,15 @@ All new text follows `design.md` section 11. The new phrases:
 | Change server sheet | Change server? · You will be signed out of St Mary's Clinic on this phone. · Change server · Cancel |
 | Recorder hints | Recording carries on when the screen is off. (Android) · Keep Clinical Scribe open while recording. (iPhone) |
 | Notification | Recording · Paused · Pause · Resume |
-| Permission sheets | Clinical Scribe needs the microphone to record the consultation. · Allow notifications to see and pause the recording when the screen is off. · Not now · Continue · Open Settings |
+| Permission sheets | Clinical Scribe needs the microphone to record. · Allow notifications to see and pause the recording when the screen is off. · Not now · Continue · Open Settings |
 | Install screen | Add to Home Screen · the three steps in 7.1 · Continue in Safari |
 | Website bar | Get the iPhone app · Get the Android app · Open · Download |
 | Android download sheet | Open the downloaded file, then tap Install. If your phone asks, allow installs from your browser. |
 | Offline | No internet connection. Recordings are kept on this phone and sent when you are back online. |
 | Newer app | A newer version of the app is ready. · Download |
 | Copy feedback | Copied |
+| Recording tabs (1.5.0) | Clinical Scribe · Two or more people talking, like a consultation · Voice Note · Just you, dictating a note or a letter · New voice note · Start voice note · A Voice Note is being recorded · A Clinical Scribe recording is going on · One recording at a time. Finish it before you start another one. · Go to the recording |
+| Templates (1.5.0) | Template Type · The Template Type stays as it was made. |
 
 Words we never show: API, key (except "service key" on admin pages), endpoint, URL (we say "link" or "address"), JSON, token, session, cache, sync, debug, error codes, and sentences that explain what a page "is for".
 

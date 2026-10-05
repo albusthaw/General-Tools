@@ -21,10 +21,10 @@ There are two roles:
 - Only people added by an admin can sign in. Public sign-up is switched off on the Supabase project, and any account that appears without an invitation is held as "waiting for approval".
 - After sign-in, a user sees the Clinical Scribe module. An admin also sees the Admin settings section in the side menu.
 
-### 2.2 Clinical Scribe module (tabs: Scribe, Templates, History)
+### 2.2 Clinical Scribe module (tabs: Clinical Scribe, Voice Note, Templates, History)
 
-**Scribe**
-1. Choose a note template (SOAP note is the default) and an optional label for the visit.
+**Clinical Scribe and Voice Note** (two recording tabs from 1.5.0, section 14). Clinical Scribe is for a conversation between two or more people; Voice Note is for one person dictating. Both work as below; each offers only templates of its own type.
+1. Choose a note template (SOAP note is the Clinical Scribe default, Dictated note the Voice Note default) and an optional label for the visit.
 2. Press Record. While recording: Pause/Resume, Finish, and Discard. A timer, a live sound level meter and the remaining credit are shown.
 3. Audio is recorded in parts of up to 10 minutes. Each finished part is uploaded straight away, so a long consultation is mostly on the server before Finish is pressed.
 4. On Finish, the last part is uploaded and the recording is handed to the server. From this point the server does all the work. The person can close the browser; the result appears in History.
@@ -155,7 +155,7 @@ API facts the code relies on:
 Privacy notes shown to admins: use paid plans (free plans may keep or use data); ElevenLabs "zero retention" (`?enable_logging=false`) is an option for Enterprise accounts, checked with ElevenLabs before it is switched on; Gemini interactions and files are deleted as soon as the result is read.
 
 ### 5.1 Prompts and prompt-injection defence
-- System instructions fix the rules: use only what is in the transcript, never invent findings, write "Not discussed" for missing sections, follow the template headings exactly, plain text output, British English.
+- System instructions fix the rules: use only what is in the transcript, never invent findings, write "Not discussed" for missing sections, follow the template headings exactly, plain text output, British English. A Voice Note has its own rules (section 14): one clinician dictating, not a conversation, "Not dictated" for missing sections, and spoken punctuation and corrections shape the text but never appear in it.
 - Transcript, template and template requests are placed inside clearly marked blocks, and the instructions say that text inside them is data, not instructions. Marker look-alikes inside user text are neutralised before sending.
 - AI output is only ever shown as text (never as HTML) and is stored as final text.
 
@@ -165,8 +165,8 @@ Privacy notes shown to admins: use paid plans (free plans may keep or use data);
 | --- | --- | --- |
 | `profiles` | id (auth user), email, full_name, role (`user`/`admin`), status (`active`/`suspended`/`pending`), credit_seconds_elevenlabs, credit_seconds_gemini, credit_unlimited | Self; admins (all) |
 | `app_settings` | single row: AI choices and models, reasoning options, retention, longest recording, Google on/off, email stub fields | Admins through RPC; public part through `get_public_config()` |
-| `templates` | scope (`shared`/`personal`), owner_id, name, description, body, source_request, is_default, is_archived | Shared: everyone signed in; personal: owner |
-| `scribes` | owner_id, title, status, template_id, provider/model snapshot, duration, transcript, error, timestamps | Owner only (admins only through review RPCs) |
+| `templates` | scope (`shared`/`personal`), owner_id, mode (Template Type: `scribe`/`voice`), name, description, body, source_request, is_default (one per mode), is_archived | Shared: everyone signed in; personal: owner |
+| `scribes` | owner_id, mode (`scribe` Clinical Scribe / `voice` Voice Note), title, status, template_id, provider/model snapshot, duration, transcript, error, timestamps | Owner only (admins only through review RPCs) |
 | `scribe_segments` | scribe_id, seq, storage_path, mime_type, bytes, duration, status, transcript, provider_duration | Owner only |
 | `notes` | scribe_id, owner_id, template snapshot (name and body), provider/model, status, content, error | Owner only; no update or delete by users |
 | `credit_ledger` | user_id, provider, change_seconds, balance_after, kind, scribe_id, actor_id, note | Self; admins |
@@ -380,3 +380,15 @@ This section is the plan for 1.4.0, written before the work. It covers the websi
   - Server tests: deleting a used template, sharing a template, search and pages, every way around the minutes found above, and zero retention refusal.
   - Browser tests: templates for admins and users, the Phone apps page for users, History pages and search, and closed and open notes.
   - Unit tests: the rules of the vibration switch (on at first, kept on the phone, nothing vibrates while off).
+
+## 14. Version 1.5.0: Voice Note
+
+The full plan, with the audit of every part it touches, is in `Voicenote.md`. In short:
+
+- **Two ways to record.** Clinical Scribe (a conversation between two or more people) and Voice Note (one person dictating) are two tabs with the same recorder, upload queue, processing, minutes and recovery. Only one recording runs at a time; the other tab says so and leads back to it.
+- **Data.** `scribes.mode`, `templates.mode` and `app_private.deleted_recordings.mode` (`scribe` or `voice`, checked by the column rule). Old rows become `scribe`. One default template per mode; the new shared **Dictated note** is the Voice Note default.
+- **Functions.** `start_scribe`, `save_template`, `search_my_recordings` and `admin_list_recordings` take a type with a default, so 1.4 apps keep working; the old versions are dropped first so each call has one match. A recording only takes a template of its own type (`wrong_template`), "Write another note" too, and the first note falls back to the default of the recording's type. A template's type never changes. Audit entries for templates, deleted recordings, opened records and audio carry the type.
+- **AI.** A Voice Note is transcribed word for word without speaker separation (ElevenLabs `diarize=false`; Gemini's transcription model without `diarization_mode`; a dictation prompt for general models), and the transcript never carries speaker labels. The note writer gets dictation rules; the template helper is told the Template Type.
+- **Screens.** A pair of cards at the top of both recording tabs explains the difference; **Template Type** when making a template; two History tabs (`/history`, `/history/voice`); type chips on templates, records and admin pages; a type filter on the Recording page. The app tab bar has five tabs; names take two lines on narrow phones (`lib/tab-names.js`).
+- **Versions.** `VERSION` 1.5.0 and `MIN_SERVER_VERSION` 1.5.0.
+- **Tests.** Deno: dictation rules and plain transcripts. Server: types refused both ways, no speaker separation for a Voice Note with both services, dictation rules logged, one default per type, Template Type fixed, History per type, admin lists and audit details. Deploy: the upgrade from 1.0.0 makes old records Clinical Scribe and adds Dictated note. Browser: a Voice Note to its note and History tab, one recording at a time, Template Type, admin type display, and the four- and five-tab bars at 320 px.

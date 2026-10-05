@@ -1,12 +1,13 @@
 # Clinical Scribe
 
-Clinical Scribe records a consultation, turns the speech into a transcript and writes a clinical note in the format you choose. It runs on your own Supabase project, so you keep control of the records, the AI keys and the user accounts.
+Clinical Scribe records a consultation or your own dictation, turns the speech into a transcript and writes a clinical note in the format you choose. It runs on your own Supabase project, so you keep control of the records, the AI keys and the user accounts.
 
-- **Scribe**: record with pause, resume and finish. The audio is saved in parts while you record. After you press Finish, the server does the rest, even if you close the browser.
-- **Templates**: SOAP note is ready to use. Each person can make their own templates by describing the note they want; the template AI writes the full template. People can delete their own templates at any time. Admins make templates for everyone, or for themselves and share them later.
-- **History**: every transcript and every note, ready to copy, 10 recordings to a page. The search finds any recording by its label, its transcript or its notes. The notes of a recording open and close; the newest is open. You can write another note from an old transcript at any time. Notes are final and cannot be edited.
+- **Clinical Scribe**: for a conversation between two or more people, such as a consultation. Record with pause, resume and finish. The audio is saved in parts while you record. After you press Finish, the server does the rest, even if you close the browser. The transcript shows who said what.
+- **Voice Note**: for one person dictating, such as a note or a letter. It works exactly like Clinical Scribe, and the AI is told that it is a dictation, not a conversation: the transcript has no speaker labels, spoken words such as "full stop" and "new paragraph" become punctuation in the note, and spoken corrections are applied.
+- **Templates**: every template has a **Template Type**, Clinical Scribe or Voice Note, so each tab offers only its own templates. SOAP note (Clinical Scribe) and Dictated note (Voice Note) are ready to use. Each person can make their own templates by describing the note they want; the template AI writes the full template. People can delete their own templates at any time. Admins make templates for everyone, or for themselves and share them later.
+- **History**: two tabs, Clinical Scribe and Voice Note, with every transcript and every note, ready to copy, 10 recordings to a page. The search finds any recording by its label, its transcript or its notes. The notes of a recording open and close; the newest is open. You can write another note from an old transcript at any time, with a template of the same type. Notes are final and cannot be edited.
 - **Minutes**: each person has transcription minutes that only an admin can add. The server measures the real length of the audio before it is transcribed, so the minutes cannot be bypassed.
-- **Admin settings**: people and their transcription minutes, AI keys and models (with lists that update from each service), the **Recording** page for audio, a logged review of other people's records, the audit log, Google sign-in and email settings.
+- **Admin settings**: people and their transcription minutes, AI keys and models (with lists that update from each service), the **Recording** page for audio, a logged review of other people's records, the audit log, Google sign-in and email settings. The admin pages show whether each recording or template is Clinical Scribe or Voice Note.
 - **Phone apps**: an Android app and an iPhone and iPad web app with every feature of the website, laid out for phones. They ask for your server link once. The **Phone apps** page, open to everyone, has the link, a QR code and the downloads.
 
 Transcription uses ElevenLabs or Gemini. Notes use Gemini (the default) or DeepSeek. The template helper uses one of Gemini or DeepSeek.
@@ -82,12 +83,13 @@ The workflow appears in the Actions tab only after this folder is on the `main` 
 3. **Your name**: open the account menu (your name at the bottom of the side menu; on a phone, the account button at the top right) to set the name shown in the audit log.
 4. **Google sign-in** (optional): the page explains each step. People can only sign in with Google if an admin has already added their email address.
 5. **Email (SMTP)**: you can save mail server settings now. Nothing uses them yet.
+6. **Templates**: SOAP note is the default for Clinical Scribe and Dictated note for Voice Note. On the **Templates** tab, or in **AI settings → Shared templates**, admins can make any shared template the default of its own type.
 
 Admins also have the **Recording** page. It lists every recording, who made it and whether its audio is still kept. Audio follows the **Keep audio after transcription** setting in **AI settings → Recordings and sign-in**. When audio is deleted, by that setting or with its recording or account, the page shows it as deleted, with the date. To listen to or download audio, an admin gives a reason and ticks a box; the opening and every download are written in the audit log. Other people never see this page, and audio never has a public address.
 
 ## 3. Phone apps
 
-Clinical Scribe has two phone apps with every feature of the website, laid out for phones: an **Android app** and an **iPhone and iPad web app**. Both connect with the **server link**, which is the address of your Clinical Scribe website (for example `https://<your-name>.github.io/General-Tools/`). Everyone finds the link, a QR code and these steps on the **Phone apps** page: in the side menu of the website, and under **More** in the apps. On a phone, the website's sign-in page also offers the app.
+Clinical Scribe has two phone apps with every feature of the website, laid out for phones: an **Android app** and an **iPhone and iPad web app**. Both have five tabs: **Clinical Scribe**, **Voice Note**, **Templates**, **History** and **More**. Both connect with the **server link**, which is the address of your Clinical Scribe website (for example `https://<your-name>.github.io/General-Tools/`). Everyone finds the link, a QR code and these steps on the **Phone apps** page: in the side menu of the website, and under **More** in the apps. On a phone, the website's sign-in page also offers the app.
 
 ### iPhone and iPad
 
@@ -190,7 +192,7 @@ Put the contents of `web/dist` on any static web host. The files use relative pa
 
 - **AI keys** are kept encrypted in Supabase Vault. Only the server functions can read them. Admins see only the last four characters, and keys never reach the browser.
 - **Accounts**: public sign-up is switched off. Only admins add people. An account that appears any other way has no access until an admin approves it.
-- **Records**: each person sees only their own recordings. Admins can open someone else's records only through **Review records**, which needs a reason and a confirmation. Every list viewed, record opened and item copied is written to the audit log with the admin's name and reason. The audit log cannot be changed or deleted, even by admins.
+- **Records**: each person sees only their own recordings and voice notes; both are protected, kept and reviewed in the same way. Admins can open someone else's records only through **Review records**, which needs a reason and a confirmation. Every list viewed, record opened and item copied is written to the audit log with the admin's name and reason. The audit log cannot be changed or deleted, even by admins.
 - **Audio** is kept in a private storage area and never has a public address. Admins choose how long it is kept (**AI settings → Recordings and sign-in**). Only admins can listen to or download it, on the **Recording** page, after giving a reason; each opening and download is written in the audit log. Gemini copies are deleted from Google as soon as the transcript is read. With **Ask ElevenLabs not to keep recordings** on, ElevenLabs keeps no copy; ElevenLabs allows this only for Enterprise accounts, so the switch checks with ElevenLabs before it turns on.
 - **Minutes**: before a part of a recording is transcribed, the server measures how much sound the audio file really holds and charges that length. Paused time is not counted, and the length the app reports cannot lower the charge. A recording that needs more minutes than are left, or is longer than the longest recording allowed, is not sent to the AI service, and its minutes are given back. Only admins can add minutes.
 - **Before recording real patients**: use paid plans for Supabase and the AI services, and sign the agreements your organisation needs (for example a data processing agreement or a business associate agreement). Choose a Supabase region that matches your data rules.
@@ -216,6 +218,9 @@ The full security design is in `project.md` (section 7).
 | Recordings stay at "Transcribing" | Check the key in **AI settings** with **Check key**. In Supabase, **Edge Functions → worker → Logs** shows what the worker is doing. |
 | The phone app says "No Clinical Scribe server was found at that link" | Use the server link shown on the **Phone apps** page, or the Supabase project address `https://<code>.supabase.co`. |
 | The phone app says the server "needs an update" | Run **Deploy Clinical Scribe** to bring the server up to date. |
+| A template is missing when you start a recording | Each tab offers only the templates of its own type. Check the type on the template's card in **Templates**. To use it for the other tab, make a new template with that **Template Type**. |
+| "The Template Type cannot be changed" | A template keeps the type it was made with. Make a new template and choose the other **Template Type**. |
+| "A Voice Note is being recorded" on the Clinical Scribe tab (or the other way round) | Only one recording runs at a time. Tap **Go to the recording**, then finish or discard it before you start another one. |
 | Android says "App not installed" when updating | The new copy was signed with another key. Remove the old app first, then install. Set up the signing key ([Build the Android app](#build-the-android-app)) so this does not happen again. |
 | The recording paused by itself | A call, sound from another app or a microphone problem paused it, and the recorder says which. Tap **Resume** when you are ready; nothing recorded is lost. |
 | The iPhone recording paused when the screen locked | iPhone pauses a web app's recording when the phone locks or another app opens. Use **Screen off** to record with a dark screen. If the phone still locks, turn off Low Power Mode and set **Auto-Lock** to **Never** in Settings. |
@@ -273,6 +278,15 @@ The workflow **Test Clinical Scribe** runs the same tests on GitHub whenever thi
 5. Tag the release as `cscribe-v<version>`, for example `cscribe-v1.1.0`.
 
 ## Changes
+
+### 1.5.0
+
+- New **Voice Note** tab for one person dictating, next to **Clinical Scribe** for conversations between two or more people. It records and processes the same way, and the AI is told it is a dictation, not a conversation.
+- Templates have a **Template Type**, Clinical Scribe or Voice Note, chosen when the template is made. Each type has its own default: SOAP note and the new Dictated note.
+- History has two tabs, Clinical Scribe and Voice Note, each with its own search and pages.
+- The admin pages show the type: **Recording** (with a type filter), **Review records**, shared templates and the audit log.
+- The phone apps have five tabs; long names take two lines on small phones instead of being cut off.
+- The phone apps need a server on version 1.5.0 or newer.
 
 ### 1.4.0
 
