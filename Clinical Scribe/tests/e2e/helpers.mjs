@@ -44,12 +44,13 @@ export async function signOut(page) {
   await expect(page.locator(".login-card")).toBeVisible();
 }
 
-// Records for about `seconds`, with a pause in the middle, then finishes.
-export async function record(page, { seconds = 7, label = "", template = null } = {}) {
-  await go(page, "/scribe");
+// Records for about `seconds`, with a pause in the middle, then finishes. With
+// mode "voice" it records a Voice Note on the Voice Note tab.
+export async function record(page, { seconds = 7, label = "", template = null, mode = "scribe" } = {}) {
+  await go(page, mode === "voice" ? "/voice" : "/scribe");
   if (template) await page.getByLabel("Note template").selectOption({ label: template });
   if (label) await page.getByLabel("Label (optional)").fill(label);
-  await page.getByRole("button", { name: "Start recording" }).click();
+  await page.getByRole("button", { name: mode === "voice" ? "Start voice note" : "Start recording" }).click();
   await expect(page.locator(".live-status")).toHaveText(/Recording/);
   await page.waitForTimeout(Math.round((seconds * 1000) / 2));
   await page.getByRole("button", { name: "Pause" }).click();

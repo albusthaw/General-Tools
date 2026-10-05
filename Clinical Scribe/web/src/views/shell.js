@@ -6,14 +6,17 @@ import { config } from "../config.js";
 import { h, replace } from "../lib/dom.js";
 import { clock, initials } from "../lib/format.js";
 import { icon } from "../lib/icons.js";
+import { MODES, modeOf } from "../lib/modes.js";
 import { elapsedSeconds, onRecorderChange } from "../lib/recorder/recorder.js";
 import { currentRoute, href, navigate, onRouteChange } from "../lib/router.js";
 import { isAdmin, profile } from "../lib/store.js";
+import { watchTabNames } from "../lib/tab-names.js";
 import { openAccountDialog, openPasswordDialog } from "./account.js";
 import { VIEWS } from "./registry.js";
 
 const SCRIBE_TABS = [
-  { name: "scribe", path: "/scribe", label: "Scribe", icon: "mic" },
+  { name: "scribe", path: MODES.scribe.path, label: MODES.scribe.name, icon: MODES.scribe.icon },
+  { name: "voice", path: MODES.voice.path, label: MODES.voice.name, icon: MODES.voice.icon },
   { name: "templates", path: "/templates", label: "Templates", icon: "template" },
   { name: "history", path: "/history", label: "History", icon: "history" },
 ];
@@ -32,7 +35,7 @@ export const ADMIN_LINKS = [
 export const APPS_LINK = { name: "apps", path: "/apps", label: "Phone apps", icon: "phone" };
 
 function tabName(route) {
-  return route.name === "history-detail" ? "history" : route.name;
+  return route.name === "history-detail" || route.name === "history-voice" ? "history" : route.name;
 }
 
 function scribeTabLinks(route) {
@@ -42,13 +45,10 @@ function scribeTabLinks(route) {
   );
 }
 
-// Tabs shown at the top of the Clinical Scribe pages on larger screens.
-export function scribeTabs(route, className = "") {
-  return h(
-    "nav",
-    { class: ["module-tabs", "glass-float", className], attrs: { "aria-label": "Clinical Scribe" } },
-    scribeTabLinks(route),
-  );
+// Tabs shown at the top of the Clinical Scribe pages on mid-size screens. Phones
+// have the bottom tab bar, and wide screens list the same tabs in the side menu.
+export function scribeTabs(route) {
+  return h("nav", { class: ["module-tabs", "glass-float"], attrs: { "aria-label": "Clinical Scribe" } }, scribeTabLinks(route));
 }
 
 export function mountShell(root, { onSignOut }) {
@@ -95,7 +95,7 @@ export function mountShell(root, { onSignOut }) {
     h(
       "nav",
       { class: "nav", attrs: { "aria-label": "Sections" } },
-      navLink({ name: "scribe-module", path: "/scribe", label: "Clinical Scribe", icon: "mic" }),
+      SCRIBE_TABS.map(navLink),
       navLink(APPS_LINK),
       admin ? h("p", { class: "nav-heading", text: "Admin settings" }) : null,
       admin ? ADMIN_LINKS.map(navLink) : null,
@@ -144,22 +144,28 @@ export function mountShell(root, { onSignOut }) {
     }
   }
 
-  // Recording reminder on other pages.
+  // Recording reminder on other pages; it leads back to the recording's own tab.
   let pillTimer = null;
   let routeName = "";
+  let updatePill = () => {};
   const stopRecorderWatch = onRecorderChange((recorder) => {
     const busy = recorder.phase === "recording" || recorder.phase === "paused";
+    const type = modeOf(recorder.mode);
     clearInterval(pillTimer);
-    const update = () => {
-      const show = busy && routeName !== "scribe";
+    updatePill = () => {
+      const show = busy && routeName !== type.route;
       for (const pill of [sidebarPill, topbarPill]) {
         pill.hidden = !show;
-        if (show) replace(pill, h("span", { class: "dot", attrs: { "aria-hidden": "true" } }), h("span", { class: "tabular", text: `${recorder.phase === "paused" ? "Paused" : "Recording"} ${clock(elapsedSeconds())}` }));
+        if (!show) continue;
+        pill.setAttribute("href", href(type.path));
+        pill.setAttribute("aria-label", `${recorder.phase === "paused" ? "Paused" : "Recording"}: go to ${type.name}`);
+        replace(pill, h("span", { class: "dot", attrs: { "aria-hidden": "true" } }), h("span", { class: "tabular", text: `${recorder.phase === "paused" ? "Paused" : "Recording"} ${clock(elapsedSeconds())}` }));
       }
     };
-    update();
-    if (busy) pillTimer = setInterval(update, 1000);
+    updatePill();
+    if (busy) pillTimer = setInterval(updatePill, 1000);
   });
+  const tabNames = watchTabNames(tabbar, ".module-tab span");
 
   let cleanupView = null;
   let renderToken = 0;
@@ -171,6 +177,7 @@ export function mountShell(root, { onSignOut }) {
     }
     const token = ++renderToken;
     routeName = route.name;
+    updatePill();
     closeDrawer();
     try {
       cleanupView?.();
@@ -179,12 +186,14 @@ export function mountShell(root, { onSignOut }) {
     }
     cleanupView = null;
 
-    const activeNav = route.module === "scribe" ? "scribe-module" : route.name;
+    // The side menu lists the four tabs, so the lit item always matches the page.
+    const activeNav = route.module === "scribe" ? tabName(route) : route.name;
     for (const [name, link] of navLinks) link.setAttribute("aria-current", name === activeNav ? "page" : "false");
-    topTitle.textContent = route.module === "scribe" ? "Clinical Scribe" : route.title;
+    topTitle.textContent = route.title;
     document.title = `${route.title} · Clinical Scribe`;
     shellEl.classList.toggle("has-tabbar", route.module === "scribe");
     replace(tabbar, route.module === "scribe" ? scribeTabLinks(route) : []);
+    tabNames.check();
 
     replace(contentInner);
     contentInner.style.animation = "none";
@@ -209,6 +218,7 @@ export function mountShell(root, { onSignOut }) {
     destroy() {
       stopRoutes();
       stopRecorderWatch();
+      tabNames.stop();
       clearInterval(pillTimer);
       document.removeEventListener("keydown", onKey);
       try {

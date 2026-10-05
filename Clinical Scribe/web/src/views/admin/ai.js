@@ -111,7 +111,7 @@ function transcriptionCard(s, models) {
   const geminiBox = h("div", { class: "stack" }, gemini.el);
   elevenBox.hidden = provider !== "elevenlabs";
   geminiBox.hidden = provider !== "gemini";
-  const language = selectField("Main language of consultations", LANGUAGES, { value: s.transcription_language });
+  const language = selectField("Main language of recordings", LANGUAGES, { value: s.transcription_language });
 
   const card = settingsCard({
     id: "transcription-title",
@@ -156,7 +156,7 @@ function writingCard(s, models) {
   const deepseekBox = h("div", {}, deepseek.el);
   geminiBox.hidden = provider !== "gemini";
   deepseekBox.hidden = provider !== "deepseek";
-  const reasoning = switchRow("Careful reasoning", { description: "Slower, and may cost more, but can help with complex consultations.", checked: s.note_reasoning });
+  const reasoning = switchRow("Careful reasoning", { description: "Slower, and may cost more, but can help with long or complex recordings.", checked: s.note_reasoning });
   const spelling = segmented("Spelling", [{ value: "en-GB", label: "British English" }, { value: "en-US", label: "American English" }], { value: s.note_spelling });
 
   const card = settingsCard({

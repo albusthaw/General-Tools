@@ -7,7 +7,7 @@ import { icon } from "../lib/icons.js";
 import { href } from "../lib/router.js";
 import { isAdmin, profile } from "../lib/store.js";
 import { ADMIN_LINKS, APPS_LINK } from "../views/shell.js";
-import { TABS } from "./tab-bar.js";
+import { TABS, tabOf } from "./tab-bar.js";
 
 export function createSideBar() {
   const me = profile();
@@ -41,7 +41,7 @@ export function createSideBar() {
   return {
     el,
     update(route) {
-      const active = route.name === "history-detail" ? "history" : route.name;
+      const active = tabOf(route);
       for (const [name, item] of links) item.setAttribute("aria-current", name === active ? "page" : "false");
     },
     destroy() {},

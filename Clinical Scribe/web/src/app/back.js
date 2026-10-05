@@ -1,6 +1,6 @@
 // The Android back gesture: it closes an open sheet or menu first, then goes back
-// a page, then returns to the Scribe tab. Only on the Scribe tab does it leave the
-// app (a recording keeps running in the background).
+// a page, then returns to the Clinical Scribe tab. Only on the Clinical Scribe tab
+// does it leave the app (a recording keeps running in the background).
 import { closeOpenMenu } from "../components/menu.js";
 import { currentRoute, navigate } from "../lib/router.js";
 

@@ -1,13 +1,17 @@
-// The tab bar of the apps: Scribe, Templates, History and More. On iPhone it is a
-// floating glass capsule that shrinks while scrolling down and grows again when
-// scrolling up; the selected tab sits in a glass "lens" that slides between tabs.
+// The tab bar of the apps: Clinical Scribe, Voice Note, Templates, History and
+// More. On iPhone it is a floating glass capsule that shrinks while scrolling down
+// and grows again when scrolling up; the selected tab sits in a glass "lens" that
+// slides between tabs. Long names may use two lines on narrow phones.
 import { h } from "../lib/dom.js";
 import { icon } from "../lib/icons.js";
+import { MODES } from "../lib/modes.js";
 import { appHooks } from "../lib/platform/hooks.js";
 import { href } from "../lib/router.js";
+import { watchTabNames } from "../lib/tab-names.js";
 
 export const TABS = [
-  { name: "scribe", path: "/scribe", label: "Scribe", icon: "mic" },
+  { name: "scribe", path: MODES.scribe.path, label: MODES.scribe.name, icon: MODES.scribe.icon },
+  { name: "voice", path: MODES.voice.path, label: MODES.voice.name, icon: MODES.voice.icon },
   { name: "templates", path: "/templates", label: "Templates", icon: "template" },
   { name: "history", path: "/history", label: "History", icon: "history" },
   { name: "more", path: "/more", label: "More", icon: "account" },
@@ -15,7 +19,7 @@ export const TABS = [
 
 /** The tab a page belongs to. */
 export function tabOf(route) {
-  if (route.name === "history-detail") return "history";
+  if (route.name === "history-detail" || route.name === "history-voice") return "history";
   if (route.admin || route.fromMore || route.name === "more") return "more";
   return route.name;
 }
@@ -55,6 +59,7 @@ export function createTabBar() {
   window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("resize", onResize);
   el.addEventListener("transitionend", onResize);
+  const names = watchTabNames(el, ".app-tab-label");
 
   return {
     el,
@@ -66,6 +71,7 @@ export function createTabBar() {
     destroy() {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
+      names.stop();
     },
   };
 }

@@ -1,7 +1,7 @@
-// One recording in History: its transcript and every note written from it. The
-// notes open and close; only the newest is open at first.
+// One recording in History: its type, its transcript and every note written from
+// it. The notes open and close; only the newest is open at first.
 import { button, withBusy } from "../../components/button.js";
-import { noteCard, statusChip, transcriptCard } from "../../components/cards.js";
+import { modeChip, noteCard, statusChip, transcriptCard } from "../../components/cards.js";
 import { banner, loading, toast } from "../../components/feedback.js";
 import { segmented } from "../../components/fields.js";
 import { menuButton } from "../../components/menu.js";
@@ -11,23 +11,24 @@ import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { dateTime, duration, timeOnly } from "../../lib/format.js";
 import { icon } from "../../lib/icons.js";
+import { modeOf } from "../../lib/modes.js";
+import { appHooks } from "../../lib/platform/hooks.js";
 import { href, navigate } from "../../lib/router.js";
 import { refreshContext } from "../app.js";
 import { scribeTabs } from "../shell.js";
 import { anotherNoteForm } from "./another-note.js";
 import { deleteRecording, renameRecording } from "./recording-actions.js";
+import { templatesOfMode } from "./template-options.js";
 
 const POLL_MS = 4000;
 
 export async function renderHistoryDetail(container, route) {
   const scribeId = route.params[0];
   const body = h("div", { class: "stack" }, loading("Loading the recording…"));
-  replace(
-    container,
-    h("a", { class: "back-link", href: href("/history") }, icon("arrowLeft"), h("span", { text: "History" })),
-    scribeTabs(route, "desktop-only"),
-    body,
-  );
+  // Back leads to the History tab of the recording's type once it is known.
+  const back = h("a", { class: "back-link", href: href("/history") }, icon("arrowLeft"), h("span", { text: "History" }));
+  replace(container, back, scribeTabs(route), body);
+  let mode = null;
 
   let templates = [];
   let timer = null;
@@ -55,6 +56,11 @@ export async function renderHistoryDetail(container, route) {
         return;
       }
       if (!templates.length) templates = await listTemplates().catch(() => []);
+      if (!mode) {
+        mode = modeOf(scribe.mode);
+        back.setAttribute("href", href(mode.historyPath));
+        appHooks.pageParent?.(mode.historyPath);
+      }
       notes = latest;
       draw(scribe);
       const busy = scribe.status === "processing" || notes.some((n) => n.status === "queued" || n.status === "writing");
@@ -69,7 +75,7 @@ export async function renderHistoryDetail(container, route) {
   }
 
   function remove(scribe) {
-    deleteRecording(scribe, () => navigate("/history"));
+    deleteRecording(scribe, () => navigate(modeOf(scribe.mode).historyPath));
   }
 
   function statusBanner(scribe) {
@@ -88,10 +94,10 @@ export async function renderHistoryDetail(container, route) {
       );
       const box = banner({
         kind: "warn",
-        title: "This recording was not finished",
+        title: `This ${mode.noun} was not finished`,
         text: scribe.segment_count
           ? "The audio saved before it stopped can still be processed."
-          : "No audio was saved for this recording.",
+          : `No audio was saved for this ${mode.noun}.`,
       });
       if (scribe.segment_count) box.querySelector(".banner-body").append(h("div", { class: "btn-row" }, process));
       return box;
@@ -157,7 +163,7 @@ export async function renderHistoryDetail(container, route) {
   }
 
   function draw(scribe) {
-    const title = scribe.title || `Recording at ${timeOnly(scribe.started_at)}`;
+    const title = scribe.title || `${mode.untitled} ${timeOnly(scribe.started_at)}`;
     const head = h(
       "div",
       { class: "page-head detail-head" },
@@ -170,6 +176,7 @@ export async function renderHistoryDetail(container, route) {
           { class: "detail-meta" },
           h("span", { text: dateTime(scribe.started_at) }),
           scribe.duration_seconds ? h("span", { text: duration(scribe.duration_seconds) }) : null,
+          modeChip(scribe.mode),
           statusChip(scribe.status),
         ),
       ),
@@ -177,10 +184,10 @@ export async function renderHistoryDetail(container, route) {
         "div",
         { class: "head-actions" },
         menuButton({
-          label: "Recording actions",
+          label: `${mode.label} actions`,
           items: [
             { label: "Rename", icon: "pencil", onClick: () => rename(scribe) },
-            { label: "Delete recording", icon: "trash", danger: true, hidden: scribe.status === "processing", onClick: () => remove(scribe) },
+            { label: `Delete ${mode.noun}`, icon: "trash", danger: true, hidden: scribe.status === "processing", onClick: () => remove(scribe) },
           ],
         }),
       ),
@@ -192,7 +199,7 @@ export async function renderHistoryDetail(container, route) {
       head,
       statusBanner(scribe),
       transcribed ? transcriptCard(scribe.transcript ?? "", { collapsed: false }) : null,
-      transcribed ? anotherNoteForm(scribeId, templates, () => schedule(0)) : null,
+      transcribed ? anotherNoteForm(scribeId, templatesOfMode(templates, mode.id), () => schedule(0)) : null,
       notesBox,
     );
     drawNotes();

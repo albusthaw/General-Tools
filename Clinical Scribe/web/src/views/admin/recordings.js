@@ -2,7 +2,7 @@
 // Audio follows the "Keep audio" setting in AI settings; once deleted it shows as
 // deleted. Listening or downloading needs a reason and is written to the audit log.
 import { button, withBusy } from "../../components/button.js";
-import { statusChip } from "../../components/cards.js";
+import { modeChip, statusChip } from "../../components/cards.js";
 import { banner, chip, emptyState, loading, pageHead } from "../../components/feedback.js";
 import { getSettings, listRecordings, listUsers } from "../../lib/api/admin.js";
 import { h, replace } from "../../lib/dom.js";
@@ -14,10 +14,34 @@ import { openRecording } from "./recording-player.js";
 
 const PAGE = 50;
 const AUDIO_FILTERS = [
-  { value: "", label: "All" },
+  { value: "", label: "All audio" },
   { value: "kept", label: "Audio kept" },
   { value: "deleted", label: "Audio deleted" },
 ];
+const TYPE_FILTERS = [
+  { value: "", label: "All types" },
+  { value: "scribe", label: "Clinical Scribe" },
+  { value: "voice", label: "Voice Note" },
+];
+
+// A row of filter chips; one is pressed at a time.
+function filterChips(label, filters, onPick) {
+  let value = "";
+  const items = filters.map((filter) =>
+    h("button", {
+      type: "button",
+      class: "filter-chip",
+      text: filter.label,
+      attrs: { "aria-pressed": String(filter.value === value) },
+      onClick: () => {
+        value = filter.value;
+        items.forEach((item, index) => item.setAttribute("aria-pressed", String(filters[index].value === value)));
+        onPick(value);
+      },
+    })
+  );
+  return h("div", { class: "chip-row", attrs: { role: "group", "aria-label": label } }, items);
+}
 
 function retentionText(days) {
   if (days === 0) return "Audio is deleted as soon as the transcript is ready.";
@@ -50,6 +74,7 @@ function recordingStatus(row) {
 export async function renderRecordings(container) {
   let person = "";
   let audio = "";
+  let type = "";
   let rows = [];
   let more = false;
 
@@ -59,19 +84,14 @@ export async function renderRecordings(container) {
     person = personSelect.value;
     load(true);
   });
-  const chips = AUDIO_FILTERS.map((filter) =>
-    h("button", {
-      type: "button",
-      class: "filter-chip",
-      text: filter.label,
-      attrs: { "aria-pressed": String(filter.value === audio) },
-      onClick: () => {
-        audio = filter.value;
-        chips.forEach((item, index) => item.setAttribute("aria-pressed", String(AUDIO_FILTERS[index].value === audio)));
-        load(true);
-      },
-    })
-  );
+  const audioChips = filterChips("Audio", AUDIO_FILTERS, (value) => {
+    audio = value;
+    load(true);
+  });
+  const typeChips = filterChips("Type", TYPE_FILTERS, (value) => {
+    type = value;
+    load(true);
+  });
   const tableBox = h("div", { class: "table-wrap" }, loading("Loading recordings…"));
   const moreBox = h("div", { class: "load-more" });
 
@@ -84,7 +104,7 @@ export async function renderRecordings(container) {
       text: "Audio is never public. To listen to or download a recording you give a reason, and that is written in the audit log with your name.",
     }),
     intro,
-    h("div", { class: "toolbar" }, h("label", { class: "select-box" }, icon("users"), personSelect), h("div", { class: "chip-row", attrs: { role: "group", "aria-label": "Show" } }, chips)),
+    h("div", { class: "toolbar" }, h("label", { class: "select-box" }, icon("users"), personSelect), typeChips, audioChips),
     h("section", { class: "glass-card card table-card" }, tableBox),
     moreBox,
   );
@@ -93,7 +113,7 @@ export async function renderRecordings(container) {
     return h(
       "table",
       { class: "table stack-on-phone recordings-table" },
-      h("thead", {}, h("tr", {}, ["Recorded", "Clinician", "Length", "Status", "Audio", ""].map((label) => h("th", { scope: "col", text: label })))),
+      h("thead", {}, h("tr", {}, ["Recorded", "Clinician", "Type", "Length", "Status", "Audio", ""].map((label) => h("th", { scope: "col", text: label })))),
       h(
         "tbody",
         {},
@@ -103,6 +123,7 @@ export async function renderRecordings(container) {
             { class: row.audio_state === "deleted" ? "is-muted" : "" },
             h("td", {}, h("div", { class: "cell-main" }, h("strong", { text: dateTime(row.recorded_at) }))),
             h("td", { attrs: { "data-label": "Clinician" } }, h("div", { class: "cell-main" }, h("span", { text: row.owner_name || row.owner_email || "—" }), row.owner_name ? h("span", { class: "muted small", text: row.owner_email }) : null)),
+            h("td", { attrs: { "data-label": "Type" } }, modeChip(row.mode)),
             h("td", { class: "small", attrs: { "data-label": "Length" } }, h("span", { text: duration(row.duration_seconds) })),
             h("td", { attrs: { "data-label": "Status" } }, recordingStatus(row)),
             h("td", { attrs: { "data-label": "Audio" } }, audioChip(row)),
@@ -124,7 +145,7 @@ export async function renderRecordings(container) {
       tableBox,
       rows.length
         ? table()
-        : emptyState({ icon: "waveform", title: "No recordings", text: person || audio ? "Nothing matches this filter." : "Recordings appear here once clinicians start recording." }),
+        : emptyState({ icon: "waveform", title: "No recordings", text: person || audio || type ? "Nothing matches this filter." : "Recordings appear here once clinicians start recording." }),
     );
     replace(moreBox, more ? loadMoreButton() : null);
   }
@@ -139,7 +160,7 @@ export async function renderRecordings(container) {
     if (fresh) replace(tableBox, loading("Loading recordings…"));
     try {
       const before = fresh || rows.length === 0 ? null : rows[rows.length - 1].recorded_at;
-      const page = await listRecordings({ person: person || null, audio, before, limit: PAGE });
+      const page = await listRecordings({ person: person || null, audio, before, limit: PAGE, mode: type });
       rows = fresh ? page : [...rows, ...page];
       more = page.length === PAGE;
       draw();

@@ -70,7 +70,13 @@ export async function recoverInterrupted(userId) {
       });
     }
     if (!recording.finishRequested) {
-      interrupted.push({ scribeId: recording.scribeId, title: recording.title ?? "", startedAt: recording.startedAt });
+      // Recordings saved before Voice Note existed are Clinical Scribe recordings.
+      interrupted.push({
+        scribeId: recording.scribeId,
+        title: recording.title ?? "",
+        startedAt: recording.startedAt,
+        mode: recording.mode === "voice" ? "voice" : "scribe",
+      });
     }
   }
   return interrupted;

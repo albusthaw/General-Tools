@@ -8,8 +8,9 @@ async function call(name, args) {
   return data;
 }
 
-export const startScribe = ({ templateId, title, mimeType }) =>
-  call("start_scribe", { p_template_id: templateId ?? null, p_title: title ?? "", p_mime_type: mimeType });
+// mode: "scribe" (Clinical Scribe) or "voice" (Voice Note).
+export const startScribe = ({ templateId, title, mimeType, mode = "scribe" }) =>
+  call("start_scribe", { p_template_id: templateId ?? null, p_title: title ?? "", p_mime_type: mimeType, p_mode: mode });
 
 export const registerSegment = ({ scribeId, seq, durationSeconds, mimeType }) =>
   call("register_segment", {
@@ -30,13 +31,14 @@ export const requestNote = (scribeId, templateId) => call("request_note", { p_sc
 export const retryNote = (noteId) => call("retry_note", { p_note_id: noteId });
 
 /**
- * One page (10 recordings, newest first) of the person's own recordings. The
- * search looks in the label, the transcript, the notes and the template names.
- * → { total, page, pages, items: [{ id, title, status, duration_seconds, started_at,
- *     note_count, found_in: "label"|"transcript"|"note"|null, extract }] }
+ * One page (10 recordings, newest first) of the person's own recordings of one
+ * type. The search looks in the label, the transcript, the notes and the template
+ * names.
+ * → { total, page, pages, items: [{ id, mode, title, status, duration_seconds,
+ *     started_at, note_count, found_in: "label"|"transcript"|"note"|null, extract }] }
  */
-export async function searchRecordings({ query = "", page = 1 } = {}) {
-  const data = await call("search_my_recordings", { p_query: query.trim().slice(0, 100), p_page: page });
+export async function searchRecordings({ query = "", page = 1, mode = "scribe" } = {}) {
+  const data = await call("search_my_recordings", { p_query: query.trim().slice(0, 100), p_page: page, p_mode: mode });
   return {
     total: data?.total ?? 0,
     page: data?.page ?? 1,
@@ -48,7 +50,7 @@ export async function searchRecordings({ query = "", page = 1 } = {}) {
 export async function getScribe(id) {
   const { data, error } = await supabase
     .from("scribes")
-    .select("id, title, status, duration_seconds, segment_count, started_at, finished_at, transcribed_at, transcript, error_message, audio_deleted_at, template_id")
+    .select("id, mode, title, status, duration_seconds, segment_count, started_at, finished_at, transcribed_at, transcript, error_message, audio_deleted_at, template_id")
     .eq("id", id)
     .maybeSingle();
   if (error) throw fromDatabase(error);

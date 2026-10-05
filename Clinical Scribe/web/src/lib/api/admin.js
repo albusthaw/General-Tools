@@ -55,8 +55,9 @@ export const getEmail = () => action("email.get");
 export const saveEmail = (settings) => action("email.save", settings);
 
 // Recording audio
-export const listRecordings = ({ person = null, audio = "", before = null, limit = 50 } = {}) =>
-  call("admin_list_recordings", { p_person: person, p_audio: audio, p_before: before, p_limit: limit });
+// mode: "" for both types, "scribe" (Clinical Scribe) or "voice" (Voice Note).
+export const listRecordings = ({ person = null, audio = "", before = null, limit = 50, mode = "" } = {}) =>
+  call("admin_list_recordings", { p_person: person, p_audio: audio, p_before: before, p_limit: limit, p_mode: mode });
 export const unlockRecording = (scribeId, reason, confirmed) => action("recordings.unlock", { scribe_id: scribeId, reason, confirmed });
 
 // One part of a recording's audio, as a Blob. The functions client would read the

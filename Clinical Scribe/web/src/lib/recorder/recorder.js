@@ -17,6 +17,7 @@ const listeners = new Set();
 
 const state = {
   phase: "idle", // idle | preparing | recording | paused | finishing | done | error
+  mode: "scribe", // which tab the recording belongs to: "scribe" or "voice" (lib/modes.js)
   scribeId: null,
   title: "",
   templateId: null,
@@ -133,9 +134,9 @@ function tick() {
   }
 }
 
-export async function start({ userId, templateId, title }) {
+export async function start({ userId, templateId, title, mode = "scribe" }) {
   if (isRecording()) return;
-  set({ phase: "preparing", error: "", notice: "", pauseReason: "", templateId, title });
+  set({ phase: "preparing", error: "", notice: "", pauseReason: "", templateId, title, mode });
   const capture = newCapture();
 
   let format;
@@ -148,7 +149,7 @@ export async function start({ userId, templateId, title }) {
 
   let info;
   try {
-    info = await startScribe({ templateId, title, mimeType: format.mime });
+    info = await startScribe({ templateId, title, mimeType: format.mime, mode });
   } catch (error) {
     capture.cancel();
     set({ phase: "error", error: messageOf(error) });
@@ -163,6 +164,7 @@ export async function start({ userId, templateId, title }) {
     mime: format.mime,
     title,
     templateId,
+    mode,
     maxSeconds: info.max_seconds,
     unlimited: Boolean(info.unlimited),
     creditSecondsLeft: info.credit_seconds_left,
@@ -228,6 +230,7 @@ export async function attach(userId) {
   startSession(capture, userId, entry.scribeId);
   set({
     phase: live.phase === "recording" ? "recording" : "paused",
+    mode: entry.mode === "voice" ? "voice" : "scribe",
     scribeId: entry.scribeId,
     title: entry.title ?? "",
     templateId: entry.templateId ?? null,

@@ -276,7 +276,8 @@
   gap: 18px;
 }
 
-/* Clinical Scribe tabs */
+/* Clinical Scribe tabs, at the top of the content on mid-size screens only: phones
+   have the bottom tab bar and wide screens list the tabs in the side menu. */
 .module-tabs {
   display: flex;
   gap: 6px;
@@ -350,6 +351,13 @@
 @keyframes pulse-dot {
   50% {
     opacity: 0.35;
+  }
+}
+
+/* Wide screens: the side menu lists the tabs */
+@media (min-width: 1024px) {
+  .module-tabs {
+    display: none;
   }
 }
 
@@ -428,7 +436,7 @@
     grid-template-columns: 1fr;
   }
 
-  .module-tabs.desktop-only {
+  .module-tabs {
     display: none;
   }
 
@@ -440,7 +448,8 @@
     bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     height: var(--tabbar);
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 4px;
     padding: 6px;
     border-radius: 22px;
@@ -450,10 +459,29 @@
     flex-direction: column;
     justify-content: center;
     gap: 2px;
+    min-width: 0;
     min-height: 0;
-    padding: 0;
-    font-size: 12.5px;
+    padding: 0 2px;
+    font-size: 12px;
+    line-height: 1.1;
+    text-align: center;
     border-radius: 16px;
+  }
+
+  /* Long names take a second line instead of being cut off. When one does (see
+     lib/tab-names.js), every name keeps room for two lines, so the icons stay in
+     one row, and the bar grows a little. */
+  html.tab-names-two-lines {
+    --tabbar: 72px;
+  }
+
+  html.tab-names-two-lines .tabbar .module-tab span {
+    min-height: 2.2em;
+  }
+
+  html.tab-names-tight .tabbar .module-tab span {
+    font-size: 11px;
+    overflow-wrap: anywhere;
   }
 
   .tabbar .module-tab svg {

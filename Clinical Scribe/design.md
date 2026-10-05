@@ -44,6 +44,8 @@ All colours are defined once as CSS custom properties in `web/src/styles/tokens.
 | `--blue-100` | `#e3edff` | Selected rows, active nav fill |
 | `--sky-200` | `#cfe4ff` | Aurora blob, info surfaces |
 | `--aqua-200` | `#c8efea` | Aurora blob (small touch of aqua) |
+| `--periwinkle-200` | `#d6dcff` | Aurora blob; the soft tint of Clinical Scribe and Voice Note (from 1.5.0) |
+| `--type-ink` | `#3b3f9a` | Text and icons on that tint (6.5:1) |
 | `--ok` | `#167a52` | Success text and icons |
 | `--warn` | `#8a5300` | Warning text and icons |
 | `--bad` | `#c22a45` | Errors, danger actions, recording dot |
@@ -53,6 +55,8 @@ All colours are defined once as CSS custom properties in `web/src/styles/tokens.
 | `--glass-edge` | `rgba(19, 35, 63, 0.08)` | Faint dark outer edge |
 
 Primary gradient: `linear-gradient(135deg, var(--blue-700), var(--blue-600))` with white text. Danger gradient: `#c22a45 → #e0503d`. Status chips use a pale fill with dark text of the same hue.
+
+Type tint (from 1.5.0, in `web/src/styles/modes.css`): Clinical Scribe and Voice Note share one soft periwinkle tint from the app's own colours, on type chips, row and template icons, the lit card of the open recording tab, the hint and a soft glow at the top of the recorder. The icon and the name tell the two types apart, never a second colour. Blue stays the one colour for actions, so the record button, links and focus ring are the same on both tabs.
 
 Aurora: four large, blurred, slowly drifting blobs in sky blue, ice blue, pale periwinkle and a small aqua. They stop moving when the device asks for reduced motion.
 
@@ -75,12 +79,12 @@ Aurora: four large, blurred, slowly drifting blobs in sky blue, ice blue, pale p
 
 | Width | Layout |
 | --- | --- |
-| 1024 px and wider | Fixed glass side menu (264 px) on the left; content column up to 1120 px wide; Clinical Scribe tabs sit at the top of the content. |
+| 1024 px and wider | Fixed glass side menu (264 px) on the left; content column up to 1120 px wide. From 1.5.0 the side menu lists the four Clinical Scribe tabs, so no tabs sit at the top of the content. |
 | 760–1023 px | Side menu becomes a drawer opened from a glass top bar; tabs stay at the top of the content. |
-| Below 760 px | Glass top bar (menu button, page title, account button); the drawer slides in from the left over a dimmed page; Clinical Scribe tabs move to a glass bottom bar above the phone's safe area; dialogs become bottom sheets; tables become stacked cards. |
+| Below 760 px | Glass top bar (menu button, page title, account button); the drawer slides in from the left over a dimmed page; Clinical Scribe tabs move to a glass bottom bar above the phone's safe area (four tabs from 1.5.0; a long name takes two lines instead of being cut off, and every name then keeps room for two so the icons stay in one row); dialogs become bottom sheets; tables become stacked cards. |
 
 Side menu contents:
-- Clinical Scribe
+- Clinical Scribe, Voice Note, Templates, History (the four tabs, from 1.5.0; the open one is lit)
 - Phone apps (everyone, from 1.4.0)
 - **Admin settings** (admins only): User settings, AI settings, Recording, Review records, Audit log, Google sign-in, Email (SMTP)
 - Account area at the bottom: initials, name, role, Change password, Sign out.
@@ -89,15 +93,17 @@ Side menu contents:
 
 **Sign in**: centred glass card over the aurora; serif title "Clinical Scribe"; email, password (with show/hide), "Sign in" button; "Continue with Google" button with the Google mark when switched on; a short line "Forgot your password? Ask your administrator." Errors appear inside the card.
 
-**Scribe**: one recorder card. Before recording: note template picker, optional visit label, minutes left, a large round "Start recording" button. While recording: red pulsing dot with "Recording", large tabular timer, live level bars, Pause/Resume, Finish (primary), Discard (text button with confirmation). After Finish: a four-step progress line (Saving audio → Transcribing → Writing note → Ready) with a calm sentence under it ("You can close this page. The note will be in History."). When ready: the note card (sections, Copy note), the transcript card (collapsed by default, Copy transcript) and "Write another note".
+**Clinical Scribe and Voice Note** (two tabs from 1.5.0): at the top, a pair of cards, one per type, each with its icon (two speech bubbles for Clinical Scribe, a microphone with sound lines for Voice Note), its name and a short line: "Two or more people talking, like a consultation" and "Just you, dictating a note or a letter". The open tab's card is lit with the periwinkle tint and a blue ring; the other card opens its tab. On phones the two cards sit side by side with the icon above the name. Under a short tinted hint ("Put the phone or computer where everyone can be heard." or "Speak as you would to a colleague. Say “full stop” or “new paragraph” whenever you like.") the recorder works the same on both tabs. If the other type is recording, the tab shows a calm card instead: "A Voice Note is being recorded" (or "A Clinical Scribe recording is going on"), "One recording at a time. Finish it before you start another one." and **Go to the recording**.
 
-**Templates**: two groups, Shared and Mine, as cards with name, short description and a View button. "Create template" opens the builder: describe → draft appears → edit or "Ask for changes" → name → Save. For admins the builder first asks "Who can use this template?" with **Everyone in the clinic** (chosen first) or **Only me**. Admins also edit, make default and archive shared templates from the template's dialog, and can share one of their own with everyone. Anyone can delete their own templates.
+**Recorder** (both tabs): one recorder card. Before recording: note template picker, optional visit label, minutes left, a large round "Start recording" button. While recording: red pulsing dot with "Recording", large tabular timer, live level bars, Pause/Resume, Finish (primary), Discard (text button with confirmation). After Finish: a four-step progress line (Saving audio → Transcribing → Writing note → Ready) with a calm sentence under it ("You can close this page. The note will be in History."). When ready: the note card (sections, Copy note), the transcript card (collapsed by default, Copy transcript) and "Write another note".
 
-**History**: search field ("Search labels, transcripts and notes") and a list grouped by day (Today, Yesterday, dates), 10 recordings per page with Previous, "Page 2 of 14" and Next under the list. Search covers every recording and says how many were found; a match inside a transcript or note shows a short extract under the title. Each row: label, time, length, status chip, note count. The detail view: transcript card, "Write another note" picker, then the notes as cards that open and close: the header shows the template name, when it was written and Copy note; only the newest is open at first; with two or more notes a quiet button switches between Newest first and Oldest first. Delete in an overflow menu.
+**Templates**: two groups, Shared and Mine, as cards with name, short description, a type chip (Clinical Scribe or Voice Note) and a View button. "Create template" opens the builder: **Template Type** first (a segmented control with the type's short line under it) → describe → draft appears → edit or "Ask for changes" → name → Save. When editing, the type shows as a chip with "The Template Type stays as it was made." **Make default** makes a template the default of its own type. For admins the builder first asks "Who can use this template?" with **Everyone in the clinic** (chosen first) or **Only me**. Admins also edit, make default and archive shared templates from the template's dialog, and can share one of their own with everyone. Anyone can delete their own templates.
+
+**History**: two tabs at the top, **Clinical Scribe** and **Voice Note** (a segmented control with icons; from 1.5.0), each with its own search and page; then the search field ("Search labels, transcripts and notes") and a list grouped by day (Today, Yesterday, dates), 10 recordings per page with Previous, "Page 2 of 14" and Next under the list. Search covers every recording and says how many were found; a match inside a transcript or note shows a short extract under the title. Each row: the type's icon on the periwinkle tint, label, time, length, status chip, note count. The detail view: a type chip next to the date, transcript card, "Write another note" picker, then the notes as cards that open and close: the header shows the template name, when it was written and Copy note; only the newest is open at first; with two or more notes a quiet button switches between Newest first and Oldest first. Delete in an overflow menu.
 
 **Phone apps**: in the side menu for everyone, under Clinical Scribe. The server link with Copy and a QR code, the Android download and the iPhone steps; admins also see the clinic name card.
 
-**Admin pages**: page title, one main action at the top right (stacked under the title on phones), then cards. Tables on desktop, stacked cards on phones. Dangerous actions sit in an overflow menu and always confirm in a dialog that names the person or item.
+**Admin pages**: page title, one main action at the top right (stacked under the title on phones), then cards. Tables on desktop, stacked cards on phones. Dangerous actions sit in an overflow menu and always confirm in a dialog that names the person or item. From 1.5.0 recordings, records and shared templates carry a type chip, and the Recording page has a type filter (**All types**, **Clinical Scribe**, **Voice Note**) next to the audio filter.
 
 **Review records**: an amber warning panel first; a person picker, a required reason and a confirmation tick; "Start review" begins a session shown by an amber bar at the top ("Review in progress — every record you open is recorded") with "End review".
 
@@ -122,7 +128,8 @@ Buttons (primary, secondary glass, quiet, danger, icon-only with a label for scr
 
 - Plain British English, short sentences, no developer words on screen. Say "service key" (not "API key"), "the AI service did not accept the key" (not "401"), "saving audio" (not "uploading blob").
 - No page subtitles that explain what a page is for. Titles, labels and buttons carry the meaning; helper text appears only where a person must act or be warned.
-- Buttons name the outcome: "Start recording", "Finish", "Copy note", "Write another note", "Create template", "Ask for changes", "Save template", "Add person", "Save key", "Check key", "Start review", "End review", "Download CSV".
+- The two ways to record are always called **Clinical Scribe** and **Voice Note**, and a template's type is its **Template Type**. Never show words such as mode, dictation mode, diarisation or speaker separation.
+- Buttons name the outcome: "Start recording", "Start voice note", "Finish", "Copy note", "Write another note", "Create template", "Ask for changes", "Save template", "Add person", "Save key", "Check key", "Start review", "End review", "Download CSV".
 - Error messages say what happened and what to do next, for example: "The AI service did not accept the saved key. Ask an administrator to check it in AI settings."
 - Keep the services' own names: ElevenLabs, Gemini, DeepSeek, Google, Supabase (only where the admin must act in Supabase).
 - Dates and times use the device's locale, 24-hour clock where the locale uses it.

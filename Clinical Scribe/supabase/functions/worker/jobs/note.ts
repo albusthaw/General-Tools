@@ -2,7 +2,7 @@
 import { ProviderError } from "../../_shared/errors.ts";
 import * as deepseek from "../../_shared/providers/deepseek.ts";
 import * as gemini from "../../_shared/providers/gemini.ts";
-import { cleanNote, noteSystem, noteUserPrompt, type Spelling } from "../../_shared/prompts.ts";
+import { cleanNote, noteSystem, noteUserPrompt, recordingMode, type Spelling } from "../../_shared/prompts.ts";
 import { getSecret } from "../../_shared/secrets.ts";
 import { adminClient, rpc } from "../../_shared/supabase.ts";
 import { runGeminiInteraction } from "../gemini-flow.ts";
@@ -31,15 +31,21 @@ export async function generateNote(job: Job, ctx: JobContext): Promise<Outcome> 
     await rpc("svc_job_done", { p_id: job.id, p_worker: ctx.workerId });
     return FINISHED;
   }
-  const { data: scribe } = await db.from("scribes").select("transcript").eq("id", note.scribe_id).maybeSingle<{ transcript: string | null }>();
+  const { data: scribe } = await db
+    .from("scribes")
+    .select("transcript, mode")
+    .eq("id", note.scribe_id)
+    .maybeSingle<{ transcript: string | null; mode: string }>();
   const transcript = scribe?.transcript?.trim() ?? "";
+  // A Voice Note is one clinician dictating, and the rules say so.
+  const mode = recordingMode(scribe?.mode);
   if (!transcript) {
     throw new JobError("No transcript.", "There is no transcript to write a note from.", false);
   }
 
   await rpc("svc_note_started", { p_note_id: note.id });
-  const system = noteSystem(note.spelling);
-  const user = noteUserPrompt(note.template_body, transcript);
+  const system = noteSystem(note.spelling, mode);
+  const user = noteUserPrompt(note.template_body, transcript, mode);
 
   let content = "";
   let inputTokens: number | null = null;

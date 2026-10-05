@@ -8,7 +8,7 @@ A growing collection of small, practical tools. Each tool lives in its own folde
 | --- | --- | --- |
 | YouTube Bulk Publisher | `YT Bulk Publish/` | Publish, rename and update many YouTube Studio videos in one go. |
 | N8N Automation imports | `N8N Automation imports/` | Importable n8n workflows, starting with a clinical decision helper that reads clinical images and emails a report. |
-| Clinical Scribe | `Clinical Scribe/` | Records consultations and writes clinical notes from a chosen template, on your own Supabase project. One-click deploy and upgrade, with an Android app and an iPhone web app. |
+| Clinical Scribe | `Clinical Scribe/` | Records consultations and dictated voice notes and writes clinical notes from a chosen template, on your own Supabase project. One-click deploy and upgrade, with an Android app and an iPhone web app. |
 
 More tools will be added over time.
 
@@ -30,7 +30,7 @@ See `YT Bulk Publish/README.md` for setup, building and known limits.
 
 ## Clinical Scribe
 
-A web app for clinicians. It records a consultation, turns the speech into a transcript with ElevenLabs or Gemini, and writes a clinical note with Gemini or DeepSeek in the format the clinician chooses (SOAP note by default, or templates made with AI help). Processing carries on in the background even if the browser is closed. Admins manage people, transcription minutes, AI keys and models; every look at someone else's records or audio is logged with a reason.
+A web app for clinicians. It records a consultation (Clinical Scribe) or a clinician's own dictation (Voice Note), turns the speech into a transcript with ElevenLabs or Gemini, and writes a clinical note with Gemini or DeepSeek in the format the clinician chooses (SOAP note or Dictated note by default, or templates made with AI help). Processing carries on in the background even if the browser is closed. Admins manage people, transcription minutes, AI keys and models; every look at someone else's records or audio is logged with a reason.
 
 It runs on your own Supabase project. The GitHub workflow "Deploy Clinical Scribe" sets up the database, server functions, sign-in settings, the first admin and the web app in one run, and the same run installs upgrades without losing any records. See `Clinical Scribe/README.md` for the step-by-step guide.
 

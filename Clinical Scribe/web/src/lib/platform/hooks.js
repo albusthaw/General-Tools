@@ -10,6 +10,7 @@
 //   startGoogleSignIn() → Promise            Google sign-in the app's way
 //   enhancePicker(select, { title })         choose from a long list in a sheet
 //   pageAction(button)                       move the page's main button into the app bar
+//   pageParent(path)                         where the app's back button leads from this page
 //   beforeRecording() → Promise<bool>        explain and ask for permissions first
 //   createCapture() → capture                record with the phone's own recorder (Android)
 //   findPhoneRecording() → Promise<state|null> a recording the phone kept while the page was closed

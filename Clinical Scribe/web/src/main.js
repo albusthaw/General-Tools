@@ -8,6 +8,7 @@ import "./styles/layout.css";
 import "./styles/components.css";
 import "./styles/login.css";
 import "./styles/scribe.css";
+import "./styles/modes.css";
 import "./styles/admin.css";
 
 import { isConfigured } from "./config.js";

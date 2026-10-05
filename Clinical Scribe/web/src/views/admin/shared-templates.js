@@ -1,5 +1,7 @@
-// Shared templates, managed by admins from AI settings.
+// Shared templates, managed by admins from AI settings. Each has a Template Type
+// (Clinical Scribe or Voice Note), and each type has its own default.
 import { button } from "../../components/button.js";
+import { modeChip } from "../../components/cards.js";
 import { confirmDialog } from "../../components/dialog.js";
 import { banner, chip, loading, toast } from "../../components/feedback.js";
 import { menuButton } from "../../components/menu.js";
@@ -7,7 +9,14 @@ import { listSharedForAdmin, restoreTemplate, setDefaultTemplate, deleteTemplate
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { icon } from "../../lib/icons.js";
+import { modeOf } from "../../lib/modes.js";
 import { openTemplateBuilder } from "../scribe/template-builder.js";
+
+// Clinical Scribe templates first, then Voice Note; archived ones last in each.
+function byType(list) {
+  const rank = (t) => (modeOf(t.mode).id === "voice" ? 1 : 0);
+  return [...list].sort((a, b) => rank(a) - rank(b) || Number(a.is_archived) - Number(b.is_archived) || Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
+}
 
 export function sharedTemplatesCard() {
   const list = h("div", { class: "list" }, loading());
@@ -36,26 +45,27 @@ export function sharedTemplatesCard() {
 
   async function load() {
     try {
-      const templates = await listSharedForAdmin();
+      const templates = byType(await listSharedForAdmin());
       replace(
         list,
         templates.map((t) =>
           h(
             "div",
             { class: "list-row" },
-            h("span", { class: "row-icon" }, icon("template")),
+            h("span", { class: ["row-icon", `is-${modeOf(t.mode).id}`] }, icon(modeOf(t.mode).icon)),
             h(
               "span",
               { class: "row-main" },
               h("span", { class: "row-title", text: t.name }),
               t.description ? h("span", { class: "row-meta", text: t.description }) : null,
+              h("span", { class: "type-chips" }, modeChip(t.mode)),
             ),
             h("span", { class: "row-end" }, t.is_default ? chip("Default", "blue", "star") : null, t.is_archived ? chip("Archived") : null),
             menuButton({
               label: `Actions for ${t.name}`,
               items: [
                 { label: "Edit", icon: "pencil", hidden: t.is_archived, onClick: () => openTemplateBuilder({ existing: t, onSaved: load }) },
-                { label: "Make default", icon: "star", hidden: t.is_default || t.is_archived, onClick: () => run(() => setDefaultTemplate(t.id), `"${t.name}" is now the default.`) },
+                { label: "Make default", icon: "star", hidden: t.is_default || t.is_archived, onClick: () => run(() => setDefaultTemplate(t.id), `"${t.name}" is now the default ${modeOf(t.mode).name} template.`) },
                 { label: "Restore", icon: "refresh", hidden: !t.is_archived, onClick: () => run(() => restoreTemplate(t.id), "The template has been restored.") },
                 {
                   label: "Archive",

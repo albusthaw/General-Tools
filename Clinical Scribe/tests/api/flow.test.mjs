@@ -20,6 +20,7 @@ const ADMIN = { email: "admin@example.test", password: "Admin-pass-2026" };
 const ALICE = { email: "alice@example.test", password: "Alice-pass-2026", name: "Alice Clinician" };
 const BOB = { email: "bob@example.test", password: "Bobby-pass-2026", name: "Bob Clinician" };
 const CAROL = { email: "carol@example.test", password: "Carol-pass-2026", name: "Carol Clinician" };
+const VERA = { email: "vera@example.test", password: "Veras-pass-2026", name: "Vera Dictates" };
 
 const state = {};
 
@@ -34,11 +35,13 @@ async function uploadPart(client, scribe, seq, audio) {
 
 // The app reports `seconds`; the audio it sends holds `audioSeconds` (the same,
 // unless a test says otherwise), or is the given file.
-async function recordAndFinish(client, { templateId = null, seconds = 20, audioSeconds = seconds, audio = null } = {}) {
+// mode: "voice" for a Voice Note; left out, the call is the one older apps make.
+async function recordAndFinish(client, { templateId = null, seconds = 20, audioSeconds = seconds, audio = null, mode = undefined } = {}) {
   const { data: scribe, error } = await client.rpc("start_scribe", {
     p_template_id: templateId,
-    p_title: "Test visit",
+    p_title: mode === "voice" ? "Dictated letter" : "Test visit",
     p_mime_type: "audio/webm",
+    ...(mode ? { p_mode: mode } : {}),
   });
   assert.equal(error, null, error?.message);
   const up = await uploadPart(client, scribe, 1, audio ?? opusWebm(audioSeconds));
@@ -308,6 +311,195 @@ describe("Clinical Scribe server", () => {
     const ctx = await state.alice.rpc("get_my_context");
     assert.equal(ctx.data.credit.gemini_seconds, 600 - 20, "10 reported, 20 in the audio: the real length is charged");
     await state.admin.rpc("admin_update_settings", { p_changes: { transcription_provider: "elevenlabs" } });
+  });
+
+  it("keeps one default template for each type, with SOAP note for Clinical Scribe and Dictated note for Voice Note", async () => {
+    const created = await invoke(state.admin, "admin", {
+      action: "users.create", email: VERA.email, full_name: VERA.name, password: VERA.password, role: "user",
+      elevenlabs_minutes: 30, gemini_minutes: 10, unlimited: false,
+    });
+    assert.equal(created.error, null, JSON.stringify(created.error));
+    VERA.id = created.data.id;
+    state.vera = await signIn(VERA.email, VERA.password);
+    const { data: templates } = await state.vera.from("templates").select("id, name, mode, is_default").eq("is_default", true).order("mode");
+    assert.deepEqual(templates.map((t) => `${t.mode}:${t.name}`), ["scribe:SOAP note", "voice:Dictated note"]);
+    state.soapId = templates.find((t) => t.mode === "scribe").id;
+    state.dictatedId = templates.find((t) => t.mode === "voice").id;
+    // Older templates without a type are Clinical Scribe templates.
+    assert.equal(sql("select count(*) from public.templates where mode not in ('scribe', 'voice')"), "0");
+  });
+
+  it("refuses a template of the other type when a recording starts", async () => {
+    const voiceWithSoap = await state.vera.rpc("start_scribe", { p_template_id: state.soapId, p_title: "", p_mime_type: "audio/webm", p_mode: "voice" });
+    assert.equal(friendlyCode(voiceWithSoap.error), "wrong_template");
+    assert.match(voiceWithSoap.error.message, /not a Voice Note template/);
+    const scribeWithDictated = await state.vera.rpc("start_scribe", { p_template_id: state.dictatedId, p_title: "", p_mime_type: "audio/webm", p_mode: "scribe" });
+    assert.equal(friendlyCode(scribeWithDictated.error), "wrong_template");
+    const olderAppWithDictated = await state.vera.rpc("start_scribe", { p_template_id: state.dictatedId, p_title: "", p_mime_type: "audio/webm" });
+    assert.equal(friendlyCode(olderAppWithDictated.error), "wrong_template", "an older app records Clinical Scribe");
+    const unknown = await state.vera.rpc("start_scribe", { p_template_id: null, p_title: "", p_mime_type: "audio/webm", p_mode: "letter" });
+    assert.equal(friendlyCode(unknown.error), "invalid_input");
+    assert.equal(sql(`select count(*) from public.scribes where owner_id = '${VERA.id}'`), "0", "nothing was started");
+  });
+
+  it("transcribes a Voice Note as one person's dictation and writes it with the dictation rules", async () => {
+    const since = Date.now();
+    const scribe = await recordAndFinish(state.vera, { mode: "voice" });
+    assert.equal(scribe.mode, "voice");
+    state.voiceId = scribe.scribe_id;
+    await waitTranscribed(state.vera, scribe.scribe_id);
+    const { data: done } = await state.vera.from("scribes").select("mode, transcript").eq("id", scribe.scribe_id).single();
+    assert.equal(done.mode, "voice");
+    assert.match(done.transcript, /^Blood pressure review full stop Reading today 128 over 82/);
+    assert.doesNotMatch(done.transcript, /Speaker/, "a dictation has no speaker labels");
+
+    const note = await waitFor(async () => {
+      const { data } = await state.vera.from("notes").select("status, content, template_name, error_message").eq("scribe_id", scribe.scribe_id);
+      if (data?.[0]?.status === "failed") throw new Error(`Note failed: ${data[0].error_message}`);
+      return data?.[0]?.status === "done" ? data[0] : null;
+    }, { label: "Voice Note's note" });
+    assert.equal(note.template_name, "Dictated note", "the Voice Note default");
+    assert.match(note.content, /^Summary:\n- Blood pressure review\./m);
+    assert.match(note.content, /^Plan:/m);
+
+    const log = (await mock("/__log")).filter((entry) => entry.at >= since);
+    const stt = log.filter((entry) => entry.path === "/v1/speech-to-text");
+    assert.equal(stt.length, 1);
+    assert.equal(stt[0].diarize, "false", "ElevenLabs is not asked to separate speakers");
+    const writes = log.filter((entry) => entry.path === "/v1beta/interactions");
+    assert.ok(writes.length >= 1 && writes.every((entry) => entry.dictation === true), "the note writer is told it is a dictation, not a conversation");
+  });
+
+  it("transcribes a Voice Note with Gemini's transcription model without the speaker setting", async () => {
+    await state.admin.rpc("admin_update_settings", { p_changes: { transcription_provider: "gemini" } });
+    const since = Date.now();
+    const scribe = await recordAndFinish(state.vera, { mode: "voice", seconds: 15, audioSeconds: 15 });
+    await waitTranscribed(state.vera, scribe.scribe_id);
+    const { data: done } = await state.vera.from("scribes").select("transcript").eq("id", scribe.scribe_id).single();
+    assert.match(done.transcript, /^Blood pressure review/);
+    assert.doesNotMatch(done.transcript, /Speaker/);
+    const log = (await mock("/__log")).filter((entry) => entry.at >= since && entry.path === "/v1beta/interactions" && entry.diarization);
+    assert.ok(log.length >= 1);
+    assert.ok(log.every((entry) => entry.diarization === "none"), "no speaker setting for one person");
+    await state.admin.rpc("admin_update_settings", { p_changes: { transcription_provider: "elevenlabs" } });
+    state.voiceGeminiId = scribe.scribe_id;
+  });
+
+  it("keeps Write another note, History and the Template Type to the recording's type", async () => {
+    const wrong = await state.vera.rpc("request_note", { p_scribe_id: state.voiceId, p_template_id: state.soapId });
+    assert.equal(friendlyCode(wrong.error), "wrong_template");
+    assert.match(wrong.error.message, /Voice Note template/);
+
+    // A Voice Note template of her own, made with the template helper.
+    const draft = await invoke(state.vera, "templates-ai", { action: "draft", type: "voice", description: "A clinic letter to the family doctor: reason, findings and plan" });
+    assert.equal(draft.error, null, JSON.stringify(draft.error));
+    assert.equal(draft.data.name, "Clinic letter");
+    const helperLog = (await mock("/__log")).filter((entry) => entry.path === "/v1beta/interactions").pop();
+    assert.equal(helperLog.dictation, true, "the template helper knows the template is for a dictation");
+    const badType = await invoke(state.vera, "templates-ai", { action: "draft", type: "letter", description: "A clinic letter to the family doctor" });
+    assert.equal(badType.error.code, "invalid_input");
+
+    const saved = await state.vera.rpc("save_template", {
+      p_id: null, p_name: draft.data.name, p_description: draft.data.description, p_body: draft.data.body,
+      p_source_request: "letter", p_scope: "personal", p_mode: "voice",
+    });
+    assert.equal(saved.error, null, saved.error?.message);
+    const changeType = await state.vera.rpc("save_template", {
+      p_id: saved.data, p_name: "Clinic letter", p_description: "", p_body: draft.data.body, p_source_request: "", p_scope: "personal", p_mode: "scribe",
+    });
+    assert.equal(friendlyCode(changeType.error), "invalid_input");
+    assert.match(changeType.error.message, /Template Type cannot be changed/);
+    const olderAppEdit = await state.vera.rpc("save_template", {
+      p_id: saved.data, p_name: "Clinic letter", p_description: "Edited", p_body: draft.data.body, p_source_request: "", p_scope: "personal",
+    });
+    assert.equal(olderAppEdit.error, null, "an edit without a type keeps the type");
+    assert.equal(sql(`select mode from public.templates where id = '${saved.data}'`), "voice");
+
+    const another = await state.vera.rpc("request_note", { p_scribe_id: state.voiceId, p_template_id: saved.data });
+    assert.equal(another.error, null, another.error?.message);
+    const note = await waitFor(async () => {
+      const { data } = await state.vera.from("notes").select("status, content, error_message").eq("id", another.data).single();
+      if (data.status === "failed") throw new Error(data.error_message);
+      return data.status === "done" ? data : null;
+    }, { label: "letter" });
+    assert.match(note.content, /^Reason for the letter:/m);
+
+    // History: each tab lists its own type; an older app sees everything.
+    const scribeStart = await state.vera.rpc("start_scribe", { p_template_id: null, p_title: "Older app", p_mime_type: "audio/webm" });
+    assert.equal(scribeStart.error, null, scribeStart.error?.message);
+    assert.equal(scribeStart.data.mode, "scribe", "an older app records Clinical Scribe");
+    const voiceTab = await state.vera.rpc("search_my_recordings", { p_query: "", p_page: 1, p_mode: "voice" });
+    assert.equal(voiceTab.data.total, 2);
+    assert.ok(voiceTab.data.items.every((item) => item.mode === "voice"));
+    const scribeTab = await state.vera.rpc("search_my_recordings", { p_query: "", p_page: 1, p_mode: "scribe" });
+    assert.deepEqual(scribeTab.data.items.map((item) => item.id), [scribeStart.data.scribe_id]);
+    const everything = await state.vera.rpc("search_my_recordings", { p_query: "", p_page: 1 });
+    assert.equal(everything.data.total, 3);
+    const found = await state.vera.rpc("search_my_recordings", { p_query: "ramipril", p_page: 1, p_mode: "voice" });
+    assert.equal(found.data.total, 2);
+    const noneInScribe = await state.vera.rpc("search_my_recordings", { p_query: "ramipril", p_page: 1, p_mode: "scribe" });
+    assert.equal(noneInScribe.data.total, 0);
+    const badTab = await state.vera.rpc("search_my_recordings", { p_query: "", p_page: 1, p_mode: "letters" });
+    assert.equal(friendlyCode(badTab.error), "invalid_input");
+    await state.vera.rpc("discard_scribe", { p_scribe_id: scribeStart.data.scribe_id });
+    state.veraLetterId = saved.data;
+  });
+
+  it("makes a shared template the default of its own type only", async () => {
+    const shared = await state.admin.rpc("save_template", {
+      p_id: null, p_name: "Operation note", p_description: "Dictated after surgery",
+      p_body: "Procedure:\n[What was done.]\n\nFindings:\n[What was found.]", p_source_request: "", p_scope: "shared", p_mode: "voice",
+    });
+    assert.equal(shared.error, null, shared.error?.message);
+    const made = await state.admin.rpc("set_default_template", { p_id: shared.data });
+    assert.equal(made.error, null, made.error?.message);
+    assert.equal(sql("select string_agg(mode || ':' || name, ',' order by mode) from public.templates where is_default"), "scribe:SOAP note,voice:Operation note");
+    assert.equal(sql(`select details ->> 'mode' from public.audit_log where action = 'template.default_changed' order by id desc limit 1`), "voice");
+    assert.equal(sql(`select details ->> 'mode' from public.audit_log where action = 'template.shared_created' order by id desc limit 1`), "voice");
+    const archiveDefault = await state.admin.rpc("delete_template", { p_id: shared.data });
+    assert.equal(friendlyCode(archiveDefault.error), "is_default");
+    assert.match(archiveDefault.error.message, /another default Voice Note template/);
+    // Back to Dictated note, and the new one archived.
+    await state.admin.rpc("set_default_template", { p_id: state.dictatedId });
+    const archived = await state.admin.rpc("delete_template", { p_id: shared.data });
+    assert.equal(archived.error, null, archived.error?.message);
+    assert.equal(sql("select string_agg(mode || ':' || name, ',' order by mode) from public.templates where is_default"), "scribe:SOAP note,voice:Dictated note");
+    const { data: list } = await state.admin.rpc("admin_list_shared_templates");
+    assert.ok(list.every((t) => t.mode === "scribe" || t.mode === "voice"), "the admin list carries the type");
+  });
+
+  it("shows the type on the Recording page, in record reviews and in the audit log", async () => {
+    const voiceOnly = await state.admin.rpc("admin_list_recordings", { p_person: VERA.id, p_audio: "", p_before: null, p_limit: 50, p_mode: "voice" });
+    assert.equal(voiceOnly.error, null, voiceOnly.error?.message);
+    assert.equal(voiceOnly.data.length, 2);
+    assert.ok(voiceOnly.data.every((row) => row.mode === "voice"));
+    const scribeOnly = await state.admin.rpc("admin_list_recordings", { p_person: VERA.id, p_audio: "", p_before: null, p_limit: 50, p_mode: "scribe" });
+    assert.ok(scribeOnly.data.every((row) => row.mode === "scribe"));
+    const olderApp = await state.admin.rpc("admin_list_recordings", { p_person: VERA.id, p_audio: "", p_before: null, p_limit: 50 });
+    assert.equal(olderApp.error, null, "an older app's call still works");
+    const badFilter = await state.admin.rpc("admin_list_recordings", { p_person: null, p_audio: "", p_before: null, p_limit: 50, p_mode: "x" });
+    assert.equal(friendlyCode(badFilter.error), "invalid_input");
+
+    const opened = await invoke(state.admin, "admin", { action: "recordings.unlock", scribe_id: state.voiceId, reason: "Checking a dictated letter for accuracy", confirmed: true });
+    assert.equal(opened.error, null, JSON.stringify(opened.error));
+    assert.equal(opened.data.mode, "voice");
+    assert.equal(sql(`select details ->> 'mode' from public.audit_log where action = 'recording.opened' order by id desc limit 1`), "voice");
+
+    const review = await state.admin.rpc("admin_review_start", { p_target_user: VERA.id, p_reason: "Audit of dictated letters this month", p_confirmed: true });
+    assert.equal(review.error, null, review.error?.message);
+    const records = await state.admin.rpc("admin_review_list", { p_review_id: review.data.review_id });
+    assert.ok(records.data.length >= 2 && records.data.every((row) => row.mode === "voice" || row.mode === "scribe"));
+    const record = await state.admin.rpc("admin_review_open", { p_review_id: review.data.review_id, p_scribe_id: state.voiceId });
+    assert.equal(record.data.mode, "voice");
+    assert.equal(sql(`select details ->> 'mode' from public.audit_log where action = 'review.record_opened' order by id desc limit 1`), "voice");
+    await state.admin.rpc("admin_review_end", { p_review_id: review.data.review_id });
+
+    // A deleted Voice Note keeps its type in the audit log and on the Recording page.
+    const removed = await state.vera.rpc("delete_scribe", { p_scribe_id: state.voiceGeminiId });
+    assert.equal(removed.error, null, removed.error?.message);
+    assert.equal(sql(`select details ->> 'mode' from public.audit_log where action = 'scribe.deleted' and scribe_id = '${state.voiceGeminiId}'`), "voice");
+    const afterDelete = await state.admin.rpc("admin_list_recordings", { p_person: VERA.id, p_audio: "deleted", p_before: null, p_limit: 50, p_mode: "voice" });
+    assert.ok(afterDelete.data.some((row) => row.scribe_id === state.voiceGeminiId && row.status === "deleted" && row.mode === "voice"));
   });
 
   it("retries temporary problems and refunds credit when processing finally fails", async () => {

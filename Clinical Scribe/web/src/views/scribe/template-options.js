@@ -1,3 +1,9 @@
+// The templates of one type (Template Type): Clinical Scribe or Voice Note.
+// Templates made before Voice Note existed are Clinical Scribe templates.
+export function templatesOfMode(templates, mode) {
+  return templates.filter((t) => (t.mode === "voice" ? "voice" : "scribe") === mode);
+}
+
 // Template choices for select fields: shared templates first (default on top),
 // then the person's own.
 export function templateOptions(templates) {

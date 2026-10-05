@@ -1,8 +1,10 @@
-// Template builder: describe the note, let the template helper draft it, review,
-// ask for changes or edit, then save. Used for personal templates and, by
-// admins, for shared templates. With scope "ask" (admins on the Templates tab),
-// the admin chooses who can use the new template; everyone is chosen first.
+// Template builder: choose the Template Type, describe the note, let the template
+// helper draft it, review, ask for changes or edit, then save. Used for personal
+// templates and, by admins, for shared templates. With scope "ask" (admins on the
+// Templates tab), the admin chooses who can use the new template; everyone is
+// chosen first. The Template Type is chosen once and stays with the template.
 import { button, withBusy } from "../../components/button.js";
+import { modeChip } from "../../components/cards.js";
 import { openDialog } from "../../components/dialog.js";
 import { toast } from "../../components/feedback.js";
 import { fieldGroup, segmented, textArea, textField } from "../../components/fields.js";
@@ -10,10 +12,9 @@ import { draftTemplate, reviseTemplate, saveTemplate } from "../../lib/api/templ
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { icon } from "../../lib/icons.js";
+import { MODE_LIST, modeOf } from "../../lib/modes.js";
 
-const EXAMPLE = "For example: a medical clerking note with presenting complaint, history of presenting complaint, past medical history, drug history and allergies, social and family history, systems review, examination, impression and plan.";
-
-export function openTemplateBuilder({ scope = "personal", existing = null, onSaved } = {}) {
+export function openTemplateBuilder({ scope = "personal", existing = null, mode = "scribe", onSaved } = {}) {
   const content = h("div", { class: "builder" });
   const dialog = openDialog({
     title: existing ? "Edit template" : scope === "shared" ? "Create shared template" : "Create template",
@@ -21,6 +22,25 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
     wide: true,
   });
   let chosenScope = scope === "ask" ? "shared" : scope;
+  let chosenMode = modeOf(existing ? existing.mode : mode).id;
+
+  // Template Type: chosen while describing a new template; after that it is shown
+  // as it is, because the draft was written for it.
+  const typeChoice = (editable) => {
+    if (!editable) {
+      return fieldGroup("Template Type", h("div", { class: "type-fixed" }, modeChip(chosenMode)), existing ? "The Template Type stays as it was made." : null);
+    }
+    const hint = h("p", { class: "field-hint", text: modeOf(chosenMode).line });
+    const control = segmented("Template Type", MODE_LIST.map((m) => ({ value: m.id, label: m.name })), {
+      value: chosenMode,
+      onChange: (value) => {
+        chosenMode = value;
+        hint.textContent = modeOf(value).line;
+        content.querySelector("textarea")?.setAttribute("placeholder", modeOf(value).example);
+      },
+    });
+    return h("div", { class: "field" }, h("span", { class: "field-label", text: "Template Type" }), control.el, hint);
+  };
 
   // Only when creating, and only for admins on the Templates tab.
   const scopeChoice = () => {
@@ -39,7 +59,7 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
     h("div", { class: "builder-working", attrs: { role: "status" } }, h("span", { class: "spinner", attrs: { "aria-hidden": "true" } }), h("span", { text }));
 
   function describeStep(problem = "") {
-    const description = textArea("Describe the note you want", { value: request, placeholder: EXAMPLE, rows: 6, maxLength: 4000, hint: "Name the sections you want, in order. The more detail you give, the better the template." });
+    const description = textArea("Describe the note you want", { value: request, placeholder: modeOf(chosenMode).example, rows: 6, maxLength: 4000, hint: "Name the sections you want, in order. The more detail you give, the better the template." });
     const error = h("p", { class: "field-error", attrs: { role: "alert" }, text: problem, hidden: !problem });
     const go = button("Create template", { variant: "primary", icon: "template" });
     go.addEventListener("click", () => {
@@ -52,7 +72,7 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
       withBusy(go, async () => {
         replace(content, working("Creating your template. This can take up to a minute…"));
         try {
-          draft = await draftTemplate(text);
+          draft = await draftTemplate(text, chosenMode);
           reviewStep();
         } catch (err) {
           describeStep(messageOf(err));
@@ -62,6 +82,7 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
     replace(
       content,
       h("p", { class: "builder-intro", text: "Describe the note in your own words. A detailed template will be drafted for you to check and change before saving." }),
+      typeChoice(true),
       scopeChoice(),
       description.el,
       error,
@@ -91,7 +112,7 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
       withBusy(update, async () => {
         showError("");
         try {
-          draft = await reviseTemplate({ name: name.value(), description: description.value(), body: body.input.value }, wanted);
+          draft = await reviseTemplate({ name: name.value(), description: description.value(), body: body.input.value }, wanted, chosenMode);
           reviewStep();
           toast("The template has been updated.", "info");
         } catch (err) {
@@ -115,6 +136,7 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
             body: body.input.value.trim(),
             sourceRequest: request,
             scope: existing?.scope ?? chosenScope,
+            mode: chosenMode,
           });
           toast(existing ? "The template is saved." : chosenScope === "shared" ? "The template is ready for everyone in the clinic." : "The template has been created.");
           dialog.close();
@@ -127,6 +149,7 @@ export function openTemplateBuilder({ scope = "personal", existing = null, onSav
 
     replace(
       content,
+      typeChoice(false),
       scopeChoice(),
       h("div", { class: "form-grid" }, name.el, description.el),
       body.el,

@@ -55,6 +55,8 @@ export function mountAppFrame(root) {
 
   let route = null;
   let previousPath = null;
+  // Set by a page that learns where it belongs after loading (see setParent).
+  let parentPath = null;
   let cleanupView = null;
   let cleanupRows = [];
   let token = 0;
@@ -62,8 +64,9 @@ export function mountAppFrame(root) {
   function goBack() {
     const parent = route ? parentOf(route) : null;
     if (!parent) return false;
-    if (previousPath === parent.path) window.history.back();
-    else navigate(parent.path);
+    const path = parentPath ?? parent.path;
+    if (previousPath === path) window.history.back();
+    else navigate(path);
     return true;
   }
 
@@ -76,6 +79,11 @@ export function mountAppFrame(root) {
       },
       // The page's main action: a "+" button in the top bar on iPhone, the
       // floating button on Android. The page's own button is then hidden.
+      // Where the back button leads, when the page knows better than its
+      // address: a Voice Note record goes back to the Voice Note tab of History.
+      setParent(path) {
+        if (route && parentOf(route)) parentPath = path;
+      },
       setAction(button) {
         const label = button.textContent.trim();
         button.classList.add("moved-to-app-bar");
@@ -107,6 +115,7 @@ export function mountAppFrame(root) {
     }
     previousPath = route?.path ?? null;
     route = next;
+    parentPath = null;
     const mine = ++token;
     clearPage();
     const parent = parentOf(next);

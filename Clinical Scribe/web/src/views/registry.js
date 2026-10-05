@@ -14,8 +14,10 @@ import { renderTemplates } from "./scribe/templates.js";
 
 export const VIEWS = {
   scribe: renderRecord,
+  voice: renderRecord,
   templates: renderTemplates,
   history: renderHistory,
+  "history-voice": renderHistory,
   "history-detail": renderHistoryDetail,
   apps: renderPhoneApps,
   "admin-users": renderUsers,

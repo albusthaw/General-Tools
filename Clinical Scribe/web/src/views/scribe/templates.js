@@ -1,6 +1,8 @@
-// The Templates tab: shared templates and the person's own. Admins also create,
-// change, archive and share the clinic's shared templates here.
+// The Templates tab: shared templates and the person's own, each marked with its
+// Template Type (Clinical Scribe or Voice Note). Admins also create, change,
+// archive and share the clinic's shared templates here.
 import { button } from "../../components/button.js";
+import { modeChip } from "../../components/cards.js";
 import { confirmDialog, openDialog } from "../../components/dialog.js";
 import { banner, chip, emptyState, loading, pageHead, toast } from "../../components/feedback.js";
 import { noteView } from "../../components/text-view.js";
@@ -9,6 +11,7 @@ import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { appHooks } from "../../lib/platform/hooks.js";
 import { icon } from "../../lib/icons.js";
+import { modeOf } from "../../lib/modes.js";
 import { isAdmin, store } from "../../lib/store.js";
 import { scribeTabs } from "../shell.js";
 import { openTemplateBuilder } from "./template-builder.js";
@@ -95,7 +98,7 @@ function templateActions(template, reload) {
       icon: "star",
       onClick: async () => {
         await setDefaultTemplate(template.id);
-        toast(`"${template.name}" is now the default.`);
+        toast(`"${template.name}" is now the default ${modeOf(template.mode).name} template.`);
         reload();
         return true;
       },
@@ -109,6 +112,7 @@ function viewTemplate(template, reload) {
     title: template.name,
     wide: true,
     body: [
+      h("p", { class: "template-type-line" }, modeChip(template.mode), template.is_default ? chip("Default", "blue", "star") : null),
       template.description ? h("p", { class: "muted", text: template.description }) : null,
       h("div", { class: "template-preview" }, noteView(template.body)),
     ],
@@ -117,18 +121,26 @@ function viewTemplate(template, reload) {
 }
 
 function templateCard(template, reload) {
+  const type = modeOf(template.mode);
   return h(
     "button",
-    { type: "button", class: "glass-card template-card", onClick: () => viewTemplate(template, reload) },
-    h("span", { class: "template-icon" }, icon("template")),
+    { type: "button", class: ["glass-card", "template-card", `is-${type.id}`], onClick: () => viewTemplate(template, reload) },
+    h("span", { class: "template-icon" }, icon(type.icon)),
     h(
       "span",
       { class: "template-text" },
       h("span", { class: "template-name" }, h("span", { text: template.name }), template.is_default ? chip("Default", "blue", "star") : null),
       template.description ? h("span", { class: "template-desc", text: template.description }) : null,
+      h("span", { class: "type-chips" }, modeChip(template.mode)),
     ),
     icon("chevronRight", { className: "chev" }),
   );
+}
+
+// Clinical Scribe templates first, then Voice Note ones; defaults first, then by name.
+function byType(list) {
+  const rank = (t) => (modeOf(t.mode).id === "voice" ? 1 : 0);
+  return [...list].sort((a, b) => rank(a) - rank(b) || Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
 }
 
 export async function renderTemplates(container, route) {
@@ -139,7 +151,7 @@ export async function renderTemplates(container, route) {
   replace(
     container,
     pageHead("Templates", [create]),
-    scribeTabs(route, "desktop-only"),
+    scribeTabs(route),
     h(
       "div",
       { class: "stack" },
@@ -154,8 +166,8 @@ export async function renderTemplates(container, route) {
   async function load() {
     try {
       const templates = await listTemplates();
-      const shared = templates.filter((t) => t.scope === "shared");
-      const mine = templates.filter((t) => t.scope === "personal");
+      const shared = byType(templates.filter((t) => t.scope === "shared"));
+      const mine = byType(templates.filter((t) => t.scope === "personal"));
       replace(sharedBox, shared.length ? shared.map((t) => templateCard(t, load)) : h("p", { class: "muted", text: "There are no shared templates." }));
       replace(
         mineBox,

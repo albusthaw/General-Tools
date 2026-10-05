@@ -11,7 +11,7 @@ async function call(name, args) {
 export async function listTemplates() {
   const { data, error } = await supabase
     .from("templates")
-    .select("id, scope, owner_id, name, description, body, is_default, updated_at")
+    .select("id, scope, owner_id, mode, name, description, body, is_default, updated_at")
     .order("is_default", { ascending: false })
     .order("name");
   if (error) throw fromDatabase(error);
@@ -20,7 +20,9 @@ export async function listTemplates() {
 
 export const listSharedForAdmin = () => call("admin_list_shared_templates", {});
 
-export const saveTemplate = ({ id = null, name, description, body, sourceRequest = "", scope }) =>
+// mode is the Template Type: "scribe" (Clinical Scribe) or "voice" (Voice Note).
+// Left out when changing a template, it keeps the type it was made with.
+export const saveTemplate = ({ id = null, name, description, body, sourceRequest = "", scope, mode = null }) =>
   call("save_template", {
     p_id: id,
     p_name: name,
@@ -28,6 +30,7 @@ export const saveTemplate = ({ id = null, name, description, body, sourceRequest
     p_body: body,
     p_source_request: sourceRequest,
     p_scope: scope,
+    p_mode: mode,
   });
 
 export const deleteTemplate = (id) => call("delete_template", { p_id: id });
@@ -41,7 +44,7 @@ async function helper(body) {
   return data?.data;
 }
 
-export const draftTemplate = (description) => helper({ action: "draft", description });
+export const draftTemplate = (description, mode = "scribe") => helper({ action: "draft", type: mode, description });
 
-export const reviseTemplate = (current, changes) =>
-  helper({ action: "revise", current: { name: current.name, description: current.description ?? "", body: current.body }, changes });
+export const reviseTemplate = (current, changes, mode = "scribe") =>
+  helper({ action: "revise", type: mode, current: { name: current.name, description: current.description ?? "", body: current.body }, changes });

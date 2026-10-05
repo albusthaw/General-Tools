@@ -1,4 +1,5 @@
-// "Write another note" from an existing transcript with any template.
+// "Write another note" from an existing transcript, with a template of the
+// recording's own type.
 import { button, withBusy } from "../../components/button.js";
 import { toast } from "../../components/feedback.js";
 import { selectField } from "../../components/fields.js";
