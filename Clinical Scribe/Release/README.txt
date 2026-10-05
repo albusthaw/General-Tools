@@ -22,7 +22,7 @@ with the website. The lines below say how this copy was built.
 The version number is in the VERSION file. README.md explains every step.
 
 Android app: clinical-scribe.apk
-  Version 1.4.0 (code 10400), 3.7 MB
-  SHA-256 17c6d9c5f046237077e55c12f6668af77535e0b94f7fe63ffbc14802157427cf
+  Version 1.5.0 (code 10500), 3.7 MB
+  SHA-256 a1d345308a42ff2718d6af810f4573943bf0477fc704b023ce2147bd340b7404
   Signed with the kept signing key, so it installs over earlier copies.
-  Built on 2026-10-03 with: node build/android/build-apk.mjs
+  Built on 2026-10-05 with: node build/android/build-apk.mjs
