@@ -198,7 +198,7 @@ A page that helps staff get the apps. From 1.4.0 everyone can open it: on the we
 
 - **Glass**: white at 72 % (iOS 27's more tinted default), blur 30 px with saturation 180 %, a bright inner top edge, a faint darker outer edge and a soft shadow. With "reduce transparency" the glass becomes nearly solid; with "increase contrast" edges become solid navy at 40 %.
 - **Colour**: the Clinical Scribe blue (`--blue-600`) is the app's tint for buttons, links, selected tabs and switches. Grouped backgrounds are a cool off-white (`#f2f5fa`) with a faint aurora.
-- **Type**: the system font. Large titles 34 px bold; navigation titles 17 px semibold; body 17 px; secondary text 15 px; footnotes 13 px. Body text uses the iPhone's own text size setting, so people who use larger text get it here too.
+- **Type**: the system font (the app's own font, Source Sans 3, where the system font is missing). Large titles 34 px bold; navigation titles 17 px semibold; body 17 px; secondary text 15 px; footnotes 13 px. Body text uses the iPhone's own text size setting, so people who use larger text get it here too.
 - **Shapes**: capsules for bars and buttons; cards 22 px radius; sheets 34 px top corners; grouped list sections 22 px radius; inner corners concentric.
 - **Motion**: pages slide in from the right with a slight parallax; sheets rise with iOS's sheet curve; the tab bar minimises and restores smoothly; press feedback is a spring scale to 96 %.
 - **Status bar and safe areas**: content runs under a translucent status bar; the top bar and tab bar respect the notch, Dynamic Island and home indicator areas.

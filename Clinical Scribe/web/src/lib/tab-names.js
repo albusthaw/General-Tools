@@ -1,9 +1,13 @@
 // Tab bars with long names, such as "Clinical Scribe" on a narrow phone or with
 // large text. When a name needs two lines, the page gets the class
 // "tab-names-two-lines": every name then keeps room for two lines, so the icons
-// stay in one row, and the bar grows a little. Checked again when the bar's width
-// changes and when the fonts arrive.
-const CLASS = "tab-names-two-lines";
+// stay in one row, and the bar grows a little. When a single word is wider than
+// its tab (a very narrow screen or a wide font), the page also gets
+// "tab-names-tight": the names become a little smaller and a long word may break,
+// so no name runs into the next tab. Checked again when the bar's width changes
+// and when the fonts arrive.
+const TWO_LINES = "tab-names-two-lines";
+const TIGHT = "tab-names-tight";
 
 export function watchTabNames(bar, labelSelector) {
   const root = document.documentElement;
@@ -13,12 +17,16 @@ export function watchTabNames(bar, labelSelector) {
   const check = () => {
     // The iPhone bar hides its names while it is small; keep the last answer.
     if (bar.classList.contains("is-min")) return;
-    root.classList.remove(CLASS);
-    const wraps = [...bar.querySelectorAll(labelSelector)].some((label) => {
+    root.classList.remove(TWO_LINES, TIGHT);
+    const labels = [...bar.querySelectorAll(labelSelector)];
+    const tooWide = labels.some((label) => label.scrollWidth > label.clientWidth + 1);
+    root.classList.toggle(TIGHT, tooWide);
+    // Measured with the size the names end up with.
+    const wraps = labels.some((label) => {
       const line = parseFloat(getComputedStyle(label).lineHeight);
       return line > 0 && label.getBoundingClientRect().height > line * 1.5;
     });
-    root.classList.toggle(CLASS, wraps);
+    root.classList.toggle(TWO_LINES, wraps);
   };
   const later = () => {
     cancelAnimationFrame(frame);
@@ -40,7 +48,7 @@ export function watchTabNames(bar, labelSelector) {
     stop() {
       observer.disconnect();
       cancelAnimationFrame(frame);
-      root.classList.remove(CLASS);
+      root.classList.remove(TWO_LINES, TIGHT);
     },
   };
 }

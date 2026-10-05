@@ -114,7 +114,12 @@
   color: var(--voice-ink);
 }
 
-/* Recorder: a soft glow of the type's colour and a friendly hint */
+/* Recorder: a soft glow of the type's colour and a friendly hint. On a narrow
+   screen the minutes chip moves under the heading instead of squeezing it. */
+.recorder-card .card-head {
+  flex-wrap: wrap;
+}
+
 .recorder-card.is-scribe {
   background-image: radial-gradient(120% 70% at 50% 0%, rgba(214, 220, 255, 0.55), rgba(214, 220, 255, 0) 70%);
 }

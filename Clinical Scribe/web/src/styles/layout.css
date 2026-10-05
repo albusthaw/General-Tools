@@ -479,6 +479,11 @@
     min-height: 2.2em;
   }
 
+  html.tab-names-tight .tabbar .module-tab span {
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
   .tabbar .module-tab svg {
     width: 21px;
     height: 21px;

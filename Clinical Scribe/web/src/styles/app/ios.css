@@ -3,7 +3,8 @@
    with large rounded corners. iOS 27 glass is more tinted than before, with a
    bright top edge and a darker outer edge, so it stays readable. */
 html[data-theme="ios"] {
-  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  /* The iPhone's own font; elsewhere the app's font, which has similar widths. */
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Source Sans 3 Variable", system-ui, sans-serif;
   --font-ui: var(--font-ios);
   --bg-0: #f2f5fa;
   --bg-1: #e7edf7;

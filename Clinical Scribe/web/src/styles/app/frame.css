@@ -250,6 +250,14 @@ html.tab-names-two-lines .app-tab-label {
   min-height: 2.2em;
 }
 
+/* A word wider than its tab (a very narrow screen or a wide font): smaller names,
+   and a long word may break rather than run into the next tab. */
+html[data-app].tab-names-tight .app-tab-label {
+  font-size: 10px;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
 .app-tab-lens {
   position: absolute;
   top: 6px;

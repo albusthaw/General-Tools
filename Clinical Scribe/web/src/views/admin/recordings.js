@@ -14,7 +14,7 @@ import { openRecording } from "./recording-player.js";
 
 const PAGE = 50;
 const AUDIO_FILTERS = [
-  { value: "", label: "All" },
+  { value: "", label: "All audio" },
   { value: "kept", label: "Audio kept" },
   { value: "deleted", label: "Audio deleted" },
 ];
