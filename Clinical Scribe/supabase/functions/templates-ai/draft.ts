@@ -36,6 +36,9 @@ async function settings(): Promise<{ provider: ProviderName; model: string }> {
     : { provider: "gemini", model: data.gemini_template_model };
 }
 
+// Room for the template and the model's thinking, which counts toward the limit.
+const TEMPLATE_OUTPUT_TOKENS = 16_384;
+
 async function ask(provider: ProviderName, model: string, apiKey: string, system: string, prompt: string) {
   if (provider === "deepseek") {
     const result = await deepseek.chat({
@@ -44,7 +47,7 @@ async function ask(provider: ProviderName, model: string, apiKey: string, system
       system,
       user: prompt,
       json: true,
-      maxTokens: 4096,
+      maxTokens: TEMPLATE_OUTPUT_TOKENS,
       timeoutMs: TIMEOUT_MS,
     });
     return { text: result.content, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
@@ -53,7 +56,7 @@ async function ask(provider: ProviderName, model: string, apiKey: string, system
     model,
     system_instruction: system,
     input: prompt,
-    generation_config: { thinking_level: "low", max_output_tokens: 4096 },
+    generation_config: { thinking_level: "low", max_output_tokens: TEMPLATE_OUTPUT_TOKENS },
     response_format: {
       type: "text",
       mime_type: "application/json",
@@ -69,9 +72,11 @@ async function ask(provider: ProviderName, model: string, apiKey: string, system
     },
     store: false,
   }, TIMEOUT_MS);
-  if (gemini.interactionState(interaction) === "failed") {
+  const state = gemini.interactionState(interaction);
+  if (state === "failed") {
     throw new ProviderError("unavailable", "gemini", `Template draft failed: ${gemini.interactionError(interaction)}`);
   }
+  if (state === "incomplete") throw new ProviderError("too_long", "gemini", "Template draft stopped at the output limit.");
   const usage = gemini.interactionUsage(interaction);
   return { text: gemini.interactionText(interaction), inputTokens: usage.inputTokens, outputTokens: usage.outputTokens };
 }

@@ -127,7 +127,7 @@ The worker:
 | --- | --- |
 | `transcribe_segment` | First measures the part's real length from the file and charges any extra minutes, or stops if there are not enough. ElevenLabs: send the audio part (multipart upload) to `POST /v1/speech-to-text` with diarisation; build "Speaker 1: …" lines from word speaker labels; store `audio_duration_secs`. Gemini: upload the part to the Files API, create a background interaction, poll until complete, read the text and speaker annotations, then delete the interaction and the file from Google. |
 | `finalize_transcript` | Runs when the last part is done. Joins parts in order, saves the transcript, settles the credit to the measured length of all parts, and queues the first note with the template chosen before recording. |
-| `generate_note` | Sends the template text and transcript to the note AI. Gemini runs as a background interaction; DeepSeek streams. Saves the note as final text. |
+| `generate_note` | Sends the template text and transcript to the note AI. Gemini runs as a background interaction; DeepSeek streams. Saves the note as final text, only when the service finished its answer (section 15). |
 | `cleanup` | Hourly: deletes audio past the retention period through the Storage API, removes old finished jobs, closes expired record reviews. |
 
 ### 4.4 Status values
@@ -149,8 +149,8 @@ The admin picks models from saved lists, or types a model name. **Update model l
 
 API facts the code relies on:
 - ElevenLabs: `POST https://api.elevenlabs.io/v1/speech-to-text`, header `xi-api-key`, multipart fields `model_id`, `file`, `diarize`, `timestamps_granularity`, optional `language_code`. Zero retention is the query parameter `?enable_logging=false`, not a form field, and ElevenLabs allows it only for Enterprise accounts; other accounts get an error. Response has `text`, `words[]` (`text`, `type`, `speaker_id`, `start`, `end`) and `audio_duration_secs`.
-- Gemini: header `x-goog-api-key`. Files: `POST /upload/v1beta/files` with the resumable protocol, then `GET/DELETE /v1beta/files/{id}`. Interactions: `POST /v1beta/interactions` (`model`, `input`, `system_instruction`, `generation_config`, `response_format`, `background`, `store`), `GET` and `DELETE /v1beta/interactions/{id}`. Audio input is `{type: "audio", mime_type, uri}` for an uploaded file or `{type: "audio", mime_type, data}` for small inline audio. Status values: `in_progress`, `queued`, `completed`, `failed`, `cancelled`, `requires_action` (tools only, so treated as failed), and `incomplete` or `budget_exceeded` (used only when they carry text). Text is in `output_text` or in `steps[].content[]`. Audio counts as 32 tokens per second. The transcription model takes `generation_config.transcription_config` with `mode: {type: "verbatim", diarization_mode: "speaker", timestamp_granularities: ["word"]}`.
-- DeepSeek: `POST https://api.deepseek.com/chat/completions`, bearer key, `thinking: {type: "enabled" | "disabled"}`, `stream: true`, `response_format: {type: "json_object"}`; `GET /models` for the list.
+- Gemini: header `x-goog-api-key`. Files: `POST /upload/v1beta/files` with the resumable protocol, then `GET/DELETE /v1beta/files/{id}`. Interactions: `POST /v1beta/interactions` (`model`, `input`, `system_instruction`, `generation_config`, `response_format`, `background`, `store`), `GET` and `DELETE /v1beta/interactions/{id}`. Audio input is `{type: "audio", mime_type, uri}` for an uploaded file or `{type: "audio", mime_type, data}` for small inline audio. Status values: `in_progress`, `queued`, `completed`, `failed`, `cancelled`, `requires_action` (tools only, so treated as failed), and `incomplete` or `budget_exceeded` (stopped early, for example at the output limit: the text is cut off and is never used, section 15). `generation_config.max_output_tokens` counts the thinking tokens too, and current writing models allow 65,536 output tokens. Text is in `output_text` or in `steps[].content[]`. Audio counts as 32 tokens per second. The transcription model takes `generation_config.transcription_config` with `mode: {type: "verbatim", diarization_mode: "speaker", timestamp_granularities: ["word"]}`.
+- DeepSeek: `POST https://api.deepseek.com/chat/completions`, bearer key, `thinking: {type: "enabled" | "disabled"}`, `stream: true`, `response_format: {type: "json_object"}`, `max_tokens` (current models allow up to 384K output tokens); `GET /models` for the list. Each stream ends with `choices[].finish_reason`: `stop` is a finished answer; `length` means the output limit was reached and the text is cut off; `insufficient_system_resource` and `aborted` mean it was interrupted.
 
 Privacy notes shown to admins: use paid plans (free plans may keep or use data); ElevenLabs "zero retention" (`?enable_logging=false`) is an option for Enterprise accounts, checked with ElevenLabs before it is switched on; Gemini interactions and files are deleted as soon as the result is read.
 
@@ -392,3 +392,19 @@ The full plan, with the audit of every part it touches, is in `Voicenote.md`. In
 - **Screens.** A pair of cards at the top of both recording tabs explains the difference; **Template Type** when making a template; two History tabs (`/history`, `/history/voice`); type chips on templates, records and admin pages; a type filter on the Recording page. The app tab bar has five tabs; names take two lines on narrow phones (`lib/tab-names.js`).
 - **Versions.** `VERSION` 1.5.0 and `MIN_SERVER_VERSION` 1.5.0.
 - **Tests.** Deno: dictation rules and plain transcripts. Server: types refused both ways, no speaker separation for a Voice Note with both services, dictation rules logged, one default per type, Template Type fixed, History per type, admin lists and audit details. Deploy: the upgrade from 1.0.0 makes old records Clinical Scribe and adds Dictated note. Browser: a Voice Note to its note and History tab, one recording at a time, Template Type, admin type display, and the four- and five-tab bars at 320 px.
+
+## 15. Version 1.5.1: notes that are never cut off
+
+**Found:** after a change of note model, or with Careful reasoning on, notes could stop part way through while the transcript was whole. Three things together caused it:
+- Notes were limited to 8,192 output tokens. Both services count the model's thinking toward that limit (Gemini documents that `max_output_tokens` includes thought tokens), and stronger models think more: Gemini Pro models always think, at "high" by default.
+- Gemini reports an answer that stops at the limit with the status `incomplete`, and the worker used its text as if it were the whole note.
+- DeepSeek reports the same with `finish_reason: "length"`, and the worker never read it. A stream that ended without its end marker was also used.
+
+**Fix:**
+- Notes allow 64,000 output tokens with both services, the template helper 16,384, and the model tests 1,024, so the thinking leaves room for the answer.
+- An answer that stopped early is never used. Gemini `incomplete` and DeepSeek `length` become a "cut off" error; other early stops and broken streams are temporary errors that are tried again.
+- A note cut off while Careful reasoning is on is written once more with light thinking (`thinking_level: low`, or DeepSeek thinking off). If it is still cut off, the note fails with "The note was longer than the chosen AI model can write in one answer, so it was not saved..." and Try again. Nothing partial is ever saved, because notes are final.
+- Transcription by Gemini general models and the template helper use the same rule.
+
+**Tests:** Deno (Gemini states, DeepSeek stop reasons and broken streams, the plain message), and server tests with stand-in services that cut a note off: written again with light thinking for Gemini and DeepSeek, failed with nothing saved when cut off again, and the limits sent.
+

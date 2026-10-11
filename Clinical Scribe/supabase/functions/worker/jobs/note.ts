@@ -1,4 +1,6 @@
-// Writes a note from a transcript with the template text saved on the note.
+// Writes a note from a transcript with the template text saved on the note. A note
+// is saved only when the AI service finished its answer: an answer cut off at the
+// output limit is never saved as if it were the whole note.
 import { ProviderError } from "../../_shared/errors.ts";
 import * as deepseek from "../../_shared/providers/deepseek.ts";
 import * as gemini from "../../_shared/providers/gemini.ts";
@@ -7,6 +9,13 @@ import { getSecret } from "../../_shared/secrets.ts";
 import { adminClient, rpc } from "../../_shared/supabase.ts";
 import { runGeminiInteraction } from "../gemini-flow.ts";
 import { FINISHED, type Job, type JobContext, JobError, later, type Outcome } from "../types.ts";
+
+// Room for the whole note and the model's thinking, which both count toward the
+// output limit. Current Gemini and DeepSeek writing models allow more than this.
+export const NOTE_OUTPUT_TOKENS = 64_000;
+
+const CUT_OFF_MESSAGE =
+  "The note was longer than the chosen AI model can write in one answer, so it was not saved. Please try again, or ask an administrator to choose another note model in AI settings.";
 
 interface NoteInfo {
   id: string;
@@ -47,48 +56,63 @@ export async function generateNote(job: Job, ctx: JobContext): Promise<Outcome> 
   const system = noteSystem(note.spelling, mode);
   const user = noteUserPrompt(note.template_body, transcript, mode);
 
+  // Careful reasoning thinks at length, and the thinking uses the same output limit
+  // as the note. After an answer was cut off, the note is written once more with
+  // light thinking, which leaves the room to the note itself.
+  const lighter = job.state.lighter === true;
+  const careful = note.reasoning && !lighter;
+  const keep = lighter ? { lighter: true } : {};
+
   let content = "";
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
 
-  if (note.provider === "deepseek") {
-    const apiKey = await getSecret("deepseek_api_key");
-    if (!apiKey) throw new ProviderError("not_set_up", "deepseek", "No DeepSeek key saved.");
-    const result = await deepseek.chat({
-      apiKey,
-      model: note.model,
-      system,
-      user,
-      reasoning: note.reasoning,
-      maxTokens: 8192,
-      timeoutMs: Math.max(30_000, Math.min(150_000, ctx.remaining() - 5000)),
-    });
-    content = result.content;
-    inputTokens = result.inputTokens;
-    outputTokens = result.outputTokens;
-  } else {
-    const apiKey = await getSecret("gemini_api_key");
-    if (!apiKey) throw new ProviderError("not_set_up", "gemini", "No Gemini key saved.");
-    let flow;
-    try {
-      flow = await runGeminiInteraction(ctx, apiKey, job.state, () => ({
+  try {
+    if (note.provider === "deepseek") {
+      const apiKey = await getSecret("deepseek_api_key");
+      if (!apiKey) throw new ProviderError("not_set_up", "deepseek", "No DeepSeek key saved.");
+      const result = await deepseek.chat({
+        apiKey,
         model: note.model,
-        system_instruction: system,
-        input: user,
-        generation_config: { thinking_level: note.reasoning ? "high" : "low", max_output_tokens: 8192 },
-      }));
-    } catch (error) {
-      if (typeof job.state.interaction_id === "string") await gemini.deleteInteraction(apiKey, job.state.interaction_id);
-      await ctx.saveState({}).catch(() => {});
-      throw error;
+        system,
+        user,
+        reasoning: careful,
+        maxTokens: NOTE_OUTPUT_TOKENS,
+        timeoutMs: Math.max(30_000, Math.min(150_000, ctx.remaining() - 5000)),
+      });
+      content = result.content;
+      inputTokens = result.inputTokens;
+      outputTokens = result.outputTokens;
+    } else {
+      const apiKey = await getSecret("gemini_api_key");
+      if (!apiKey) throw new ProviderError("not_set_up", "gemini", "No Gemini key saved.");
+      let flow;
+      try {
+        flow = await runGeminiInteraction(ctx, apiKey, job.state, () => ({
+          model: note.model,
+          system_instruction: system,
+          input: user,
+          generation_config: { thinking_level: careful ? "high" : "low", max_output_tokens: NOTE_OUTPUT_TOKENS },
+        }));
+      } catch (error) {
+        if (typeof job.state.interaction_id === "string") await gemini.deleteInteraction(apiKey, job.state.interaction_id);
+        await ctx.saveState(keep).catch(() => {});
+        throw error;
+      }
+      if (!flow.done) return later(4, flow.state);
+      content = gemini.interactionText(flow.interaction);
+      const usage = gemini.interactionUsage(flow.interaction);
+      inputTokens = usage.inputTokens;
+      outputTokens = usage.outputTokens;
+      const id = gemini.interactionId(flow.interaction) ?? (typeof job.state.interaction_id === "string" ? job.state.interaction_id : "");
+      if (id) await gemini.deleteInteraction(apiKey, id);
     }
-    if (!flow.done) return later(4, flow.state);
-    content = gemini.interactionText(flow.interaction);
-    const usage = gemini.interactionUsage(flow.interaction);
-    inputTokens = usage.inputTokens;
-    outputTokens = usage.outputTokens;
-    const id = gemini.interactionId(flow.interaction) ?? (typeof job.state.interaction_id === "string" ? job.state.interaction_id : "");
-    if (id) await gemini.deleteInteraction(apiKey, id);
+  } catch (error) {
+    if (error instanceof ProviderError && error.kind === "too_long") {
+      if (careful) return later(1, { lighter: true });
+      throw new JobError(`Note cut off at the output limit (${note.provider} ${note.model}).`, CUT_OFF_MESSAGE, false);
+    }
+    throw error;
   }
 
   const cleaned = cleanNote(content);

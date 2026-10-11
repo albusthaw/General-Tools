@@ -4,6 +4,7 @@
 // Clinical Scribe folder: deno test tests/functions/
 import { assert, assertEquals, assertMatch } from "jsr:@std/assert@1";
 import { classifyHttpError, ProviderError, userMessage } from "../../supabase/functions/_shared/errors.ts";
+import { readStream } from "../../supabase/functions/_shared/providers/deepseek.ts";
 import {
   cleanNote,
   neutralise,
@@ -148,7 +149,7 @@ Deno.test("service errors are sorted into what to tell the person and whether to
 });
 
 Deno.test("messages for people name the service and contain no codes", () => {
-  for (const kind of ["auth", "quota", "rate", "model", "bad_request", "unavailable", "timeout", "not_set_up", "invalid_output"] as const) {
+  for (const kind of ["auth", "quota", "rate", "model", "bad_request", "unavailable", "timeout", "not_set_up", "invalid_output", "too_long"] as const) {
     const message = userMessage(new ProviderError(kind, "elevenlabs", "elevenlabs answered 500: {\"detail\": \"x\"}", 500));
     assertMatch(message, /ElevenLabs/);
     assert(!/\d{3}|detail|\{/.test(message), message);
@@ -167,4 +168,40 @@ Deno.test("keys and tokens are hidden from anything logged or stored", () => {
   }
   assertMatch(text, /Bearer \[hidden\]/);
   assertMatch(text, /\?key=\[hidden\]&x=1/);
+});
+
+// A DeepSeek answer stream as server-sent events.
+function stream(...events: Array<Record<string, unknown> | "[DONE]">): Response {
+  return new Response(events.map((event) => `data: ${event === "[DONE]" ? event : JSON.stringify(event)}\n\n`).join(""));
+}
+const piece = (content: string, finish: string | null = null) => ({ choices: [{ index: 0, delta: { content }, finish_reason: finish }] });
+const failureOf = async (response: Response) => await readStream(response, 5000).then(() => null, (error) => error as ProviderError);
+
+Deno.test("a DeepSeek answer is used only when DeepSeek says it finished", async () => {
+  const usage = { choices: [], usage: { prompt_tokens: 900, completion_tokens: 250 } };
+  const whole = await readStream(stream(piece("Subjective:"), piece("\n- Cough."), piece("", "stop"), usage, "[DONE]"), 5000);
+  assertEquals(whole.content, "Subjective:\n- Cough.");
+  assertEquals(whole.outputTokens, 250);
+  // Thinking text never becomes part of the note.
+  const thought = { choices: [{ index: 0, delta: { reasoning_content: "Let me think." }, finish_reason: null }] };
+  assertEquals((await readStream(stream(thought, piece("Plan:", "stop"), "[DONE]"), 5000)).content, "Plan:");
+
+  // Stopped at the output limit: cut off, so it is not used.
+  const cut = await failureOf(stream(piece("Subjective:"), piece("", "length"), "[DONE]"));
+  assertEquals(cut?.kind, "too_long");
+  // Interrupted by DeepSeek, or the stream ended without saying it finished: tried again.
+  for (const response of [stream(piece("Subjective:", "insufficient_system_resource"), "[DONE]"), stream(piece("Subjective:"))]) {
+    const interrupted = await failureOf(response);
+    assertEquals(interrupted?.kind, "unavailable");
+    assert(interrupted?.retryable);
+  }
+  assertEquals((await failureOf(stream(piece("Subjective:", "content_filter"), "[DONE]")))?.kind, "invalid_output");
+  // An answer that ends properly without a reason is still whole.
+  assertEquals((await readStream(stream(piece("Plan: review"), "[DONE]"), 5000)).content, "Plan: review");
+});
+
+Deno.test("a cut-off answer is explained in plain words and tried again", () => {
+  const error = new ProviderError("too_long", "gemini", "Gemini stopped at the output limit (status incomplete).");
+  assert(error.retryable);
+  assertMatch(userMessage(error), /^Gemini stopped before the answer was finished/);
 });

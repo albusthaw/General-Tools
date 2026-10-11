@@ -502,6 +502,59 @@ describe("Clinical Scribe server", () => {
     assert.ok(afterDelete.data.some((row) => row.scribe_id === state.voiceGeminiId && row.status === "deleted" && row.mode === "voice"));
   });
 
+  it("never saves a note cut off at the output limit, and writes it again with light thinking", async () => {
+    const writeNote = async () => {
+      const asked = await state.alice.rpc("request_note", { p_scribe_id: state.scribeId, p_template_id: state.soapId });
+      assert.equal(asked.error, null, asked.error?.message);
+      return await waitFor(async () => {
+        const { data } = await state.alice.from("notes").select("status, content, error_message").eq("id", asked.data).single();
+        return data.status === "done" || data.status === "failed" ? data : null;
+      }, { label: "note" });
+    };
+    const asksSince = async (since, path) => (await mock("/__log")).filter((e) => e.at >= since && e.path === path && e.method === "POST");
+
+    // Gemini with careful reasoning: the thinking uses up the output limit once.
+    await state.admin.rpc("admin_update_settings", { p_changes: { note_reasoning: true } });
+    await mock("/__cut", { path: "/v1beta/interactions", when: "careful", times: 1 });
+    let since = Date.now();
+    const again = await writeNote();
+    assert.equal(again.status, "done", again.error_message);
+    assert.match(again.content, /^Subjective:/m);
+    assert.match(again.content, /^Plan:/m, "the whole note, not the part before the limit");
+    let asks = await asksSince(since, "/v1beta/interactions");
+    assert.deepEqual(asks.map((e) => e.thinking), ["high", "low"], "the second try thinks lightly");
+    assert.ok(asks.every((e) => e.maxOutput === 64000), "room for the note and the thinking");
+
+    // Cut off again: nothing is saved, and the note says why in plain words.
+    await mock("/__cut", { path: "/v1beta/interactions", when: "always", times: 2 });
+    const cut = await writeNote();
+    assert.equal(cut.status, "failed");
+    assert.equal(cut.content, null, "no part of a note is ever saved");
+    assert.match(cut.error_message, /^The note was longer than the chosen AI model can write in one answer/);
+
+    // Without careful reasoning a cut-off answer is not saved either, and is not tried with more thinking.
+    await state.admin.rpc("admin_update_settings", { p_changes: { note_reasoning: false } });
+    await mock("/__cut", { path: "/v1beta/interactions", when: "always", times: 1 });
+    since = Date.now();
+    const light = await writeNote();
+    assert.equal(light.status, "failed");
+    assert.equal(light.content, null);
+    asks = await asksSince(since, "/v1beta/interactions");
+    assert.deepEqual(asks.map((e) => e.thinking), ["low"]);
+
+    // DeepSeek with careful reasoning: the same, and the second try does not think.
+    await state.admin.rpc("admin_update_settings", { p_changes: { note_provider: "deepseek", note_reasoning: true } });
+    await mock("/__cut", { path: "/chat/completions", when: "careful", times: 1 });
+    since = Date.now();
+    const deep = await writeNote();
+    assert.equal(deep.status, "done", deep.error_message);
+    assert.match(deep.content, /^Plan:/m);
+    const chats = await asksSince(since, "/chat/completions");
+    assert.deepEqual(chats.map((e) => e.thinking), ["enabled", "disabled"]);
+    assert.ok(chats.every((e) => e.maxTokens === 64000));
+    await state.admin.rpc("admin_update_settings", { p_changes: { note_provider: "gemini", note_reasoning: false } });
+  });
+
   it("retries temporary problems and refunds credit when processing finally fails", async () => {
     const before = (await state.alice.rpc("get_my_context")).data.credit.seconds_left;
     await mock("/__fail", { match: "/v1/speech-to-text", status: 400, message: "Audio file is corrupted", times: 1 });

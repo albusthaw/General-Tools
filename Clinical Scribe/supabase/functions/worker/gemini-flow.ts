@@ -22,6 +22,11 @@ export type FlowResult =
   | { done: true; interaction: Interaction }
   | { done: false; state: Record<string, unknown> };
 
+// The answer stopped at the output limit; the caller decides whether to try again.
+function cutOff(): ProviderError {
+  return new ProviderError("too_long", "gemini", "Gemini stopped at the output limit (status incomplete).");
+}
+
 function failure(interaction: Interaction): ProviderError {
   const detail = interactionError(interaction) || `status ${String(interaction?.status ?? "unknown")}`;
   const lower = detail.toLowerCase();
@@ -49,6 +54,7 @@ export async function runGeminiInteraction(
     const status = interactionState(interaction);
     if (status === "done") return { done: true, interaction };
     if (status === "failed") throw failure(interaction);
+    if (status === "incomplete") throw cutOff();
     id = interactionId(interaction) ?? "";
     if (!id) throw new ProviderError("invalid_output", "gemini", "Gemini did not return an interaction id.");
     next = { ...next, interaction_id: id, interaction_started_at: Date.now() };
@@ -71,6 +77,7 @@ export async function runGeminiInteraction(
     const status = interactionState(interaction);
     if (status === "done") return { done: true, interaction };
     if (status === "failed") throw failure(interaction);
+    if (status === "incomplete") throw cutOff();
   }
 
   if (Date.now() - startedAt > MAX_INTERACTION_MS) {

@@ -227,6 +227,8 @@ The full security design is in `project.md` (section 7).
 | The Android recording stops after the screen has been off for a while | Some phones close apps to save battery. In the phone's **Settings → Apps → Clinical Scribe → Battery**, choose **Unrestricted** (the words differ a little between phone makers). |
 | A recording stopped with "This ElevenLabs account cannot use zero retention" | ElevenLabs allows zero retention only for Enterprise accounts. In **AI settings → Transcription**, switch off **Ask ElevenLabs not to keep recordings** and save. Then open the recording in History and choose **Try again**. |
 | A recording stopped with "There are not enough transcription minutes for the real length of this recording" | The audio was longer than the minutes left. An admin adds minutes in **User settings**; then choose **Try again** on the recording in History. |
+| A note stops part way through | Fixed in 1.5.1: run **Deploy Clinical Scribe** to update the server. Notes are final, so a note that was cut off before the update stays as it was; open the recording in History and use **Write another note**. |
+| A note says it "was longer than the chosen AI model can write in one answer" | Nothing was saved. Use **Try again**. If it keeps happening, an admin can switch off **Careful reasoning** or choose another note model in **AI settings**. |
 | A recording stopped with "The length of this recording's audio could not be checked" | The audio file was damaged or in a format the server does not accept. Record again. If it keeps happening, report which phone and browser were used. |
 | No admin is left | In the Supabase **SQL Editor**, run `update public.profiles set role = 'admin', status = 'active' where email = 'you@example.org';` with your own email address. |
 
@@ -278,6 +280,12 @@ The workflow **Test Clinical Scribe** runs the same tests on GitHub whenever thi
 5. Tag the release as `cscribe-v<version>`, for example `cscribe-v1.1.0`.
 
 ## Changes
+
+### 1.5.1
+
+- Notes are no longer cut short after a change of note model or with **Careful reasoning**. The model's thinking and the note share one output limit, and each answer now has room for both.
+- A note is saved only when the AI service has finished it. If an answer is cut off while **Careful reasoning** is on, the note is written again once with light thinking. If it is still cut off, the note says so in plain words and nothing is saved.
+- The same check now covers transcripts and the template helper. **Test chosen models** no longer fails models that think before they answer.
 
 ### 1.5.0
 

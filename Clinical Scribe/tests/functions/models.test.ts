@@ -44,11 +44,12 @@ Deno.test("the general Gemini model stays a transcription choice when the accoun
   ]);
 });
 
-Deno.test("Gemini answers that stop early are used only when they have text", () => {
+Deno.test("a Gemini answer that stops early is never used as a whole answer", () => {
   const withText = { outputs: [{ type: "text", text: "Subjective: cough" }] };
   assertEquals(interactionState({ status: "completed", ...withText }), "done");
-  assertEquals(interactionState({ status: "incomplete", ...withText }), "done");
-  assertEquals(interactionState({ status: "budget_exceeded", outputs: [] }), "failed");
+  // Stopped at the output limit (thinking counts toward it): the text is cut off.
+  assertEquals(interactionState({ status: "incomplete", ...withText }), "incomplete");
+  assertEquals(interactionState({ status: "budget_exceeded", outputs: [] }), "incomplete");
   assertEquals(interactionState({ status: "requires_action" }), "failed");
   assertEquals(interactionState({ status: "queued" }), "running");
   assertEquals(interactionState({ status: "in_progress" }), "running");
