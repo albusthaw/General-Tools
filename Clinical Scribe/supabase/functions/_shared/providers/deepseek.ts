@@ -1,5 +1,6 @@
 // DeepSeek chat completions (OpenAI format), streamed so long answers keep the
-// connection alive.
+// connection alive. An answer is used only when DeepSeek says it finished: one that
+// stopped at the output limit, or was interrupted, is cut off.
 import { serviceBase } from "../env.ts";
 import { ProviderError } from "../errors.ts";
 import { type ModelChoice, mergeChoices } from "../models.ts";
@@ -58,6 +59,7 @@ export async function readStream(response: Response, timeoutMs: number): Promise
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
   let finished = false;
+  let finishReason: string | null = null;
 
   const handleLine = (line: string) => {
     const trimmed = line.trim();
@@ -78,8 +80,10 @@ export async function readStream(response: Response, timeoutMs: number): Promise
     }
     const choices = Array.isArray(event.choices) ? event.choices : [];
     for (const choice of choices) {
-      const delta = (choice as Record<string, unknown>).delta as Record<string, unknown> | undefined;
+      const item = choice as Record<string, unknown>;
+      const delta = item.delta as Record<string, unknown> | undefined;
       if (delta && typeof delta.content === "string") content += delta.content;
+      if (typeof item.finish_reason === "string" && item.finish_reason) finishReason = item.finish_reason;
     }
     const usage = event.usage as Record<string, unknown> | undefined;
     if (usage) {
@@ -117,7 +121,22 @@ export async function readStream(response: Response, timeoutMs: number): Promise
   } finally {
     reader.releaseLock();
   }
+  checkFinish(finishReason, finished);
   return { content, inputTokens, outputTokens };
+}
+
+// Why the answer stopped. "length": the output limit was reached (it counts the
+// model's thinking too), so the text is cut off. "insufficient_system_resource" or
+// "aborted", or a stream that ends without saying it finished: the answer was
+// interrupted and is tried again later.
+function checkFinish(finishReason: string | null, sawEnd: boolean): void {
+  if (finishReason === "stop") return;
+  if (finishReason === "length") throw new ProviderError("too_long", "deepseek", "DeepSeek stopped at the output limit.");
+  if (finishReason === "content_filter") {
+    throw new ProviderError("invalid_output", "deepseek", "DeepSeek held back part of the answer (content filter).");
+  }
+  if (finishReason) throw new ProviderError("unavailable", "deepseek", `DeepSeek stopped early: ${finishReason.slice(0, 60)}.`);
+  if (!sawEnd) throw new ProviderError("unavailable", "deepseek", "The DeepSeek answer ended before it was complete.");
 }
 
 // Known good models, shown first. DeepSeek's own list adds any others.
@@ -145,8 +164,14 @@ export async function checkKey(apiKey: string): Promise<void> {
   await offeredModels(apiKey);
 }
 
-// A tiny request that shows whether the model answers with this key.
+// A tiny request that shows whether the model answers with this key. An answer that
+// reaches the tiny limit still shows that the model works.
 export async function testText(apiKey: string, model: string): Promise<void> {
-  const result = await chat({ apiKey, model, system: "Reply with one word.", user: "Say: ready", maxTokens: 32, timeoutMs: 45_000 });
-  if (!result.content.trim()) throw new ProviderError("invalid_output", "deepseek", "The model sent an empty answer.");
+  try {
+    const result = await chat({ apiKey, model, system: "Reply with one word.", user: "Say: ready", maxTokens: 32, timeoutMs: 45_000 });
+    if (!result.content.trim()) throw new ProviderError("invalid_output", "deepseek", "The model sent an empty answer.");
+  } catch (error) {
+    if (error instanceof ProviderError && error.kind === "too_long") return;
+    throw error;
+  }
 }

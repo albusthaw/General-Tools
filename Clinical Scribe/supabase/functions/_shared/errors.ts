@@ -11,6 +11,7 @@ export type ProviderErrorKind =
   | "timeout" // no answer in time
   | "not_set_up" // no key saved
   | "retention" // the account may not use zero retention (ElevenLabs)
+  | "too_long" // the answer stopped at the output limit, so it is cut off
   | "invalid_output"; // the answer could not be used
 
 export type ProviderName = "gemini" | "elevenlabs" | "deepseek";
@@ -27,7 +28,8 @@ export class ProviderError extends Error {
   }
 
   get retryable(): boolean {
-    return this.kind === "rate" || this.kind === "unavailable" || this.kind === "timeout" || this.kind === "invalid_output";
+    return this.kind === "rate" || this.kind === "unavailable" || this.kind === "timeout" || this.kind === "invalid_output" ||
+      this.kind === "too_long";
   }
 }
 
@@ -57,6 +59,8 @@ export function userMessage(error: ProviderError): string {
       return `${name} is not set up yet. Ask an administrator to add the service key in AI settings.`;
     case "invalid_output":
       return `${name} gave an answer that could not be used. Please try again.`;
+    case "too_long":
+      return `${name} stopped before the answer was finished, because it was longer than ${name} allows in one answer. Please try again. If it keeps happening, ask an administrator to choose another model in AI settings.`;
     case "retention":
       return `This ${name} account cannot use zero retention; ${name} allows it only for Enterprise accounts. Ask an administrator to switch off "Ask ElevenLabs not to keep recordings" in AI settings, then use Try again.`;
     default:

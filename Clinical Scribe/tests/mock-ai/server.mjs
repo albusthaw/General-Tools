@@ -26,6 +26,8 @@ const NEW_PROJECT_AUTH = {
 
 let log = [];
 let failures = [];
+// Notes cut off at the output limit on purpose: { path, when: "careful" | "always", times }.
+let cuts = [];
 let interactions = new Map();
 let files = new Map();
 let authConfig = { ...NEW_PROJECT_AUTH };
@@ -48,6 +50,26 @@ function readBody(req) {
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => resolve(Buffer.concat(chunks)));
   });
+}
+
+// "careful": only when the request thinks at length (careful reasoning), as when the
+// thinking uses up the output limit.
+function takeCut(path, careful) {
+  const rule = cuts.find((c) => c.path === path && c.times > 0 && (c.when === "always" || (c.when === "careful" && careful)));
+  if (!rule) return false;
+  rule.times -= 1;
+  return true;
+}
+
+// The first part of an answer, as a service sends when it stops at the output limit.
+function firstPart(text) {
+  return text.slice(0, Math.ceil(text.length / 2));
+}
+
+// A note request to Gemini: text in, no JSON shape, not transcription.
+function isNoteRequest(body) {
+  const audio = Array.isArray(body.input) && body.input.some((part) => part.type === "audio");
+  return !body.response_format && !audio && !/transcribe/.test(String(body.model ?? ""));
 }
 
 function takeFailure(path, search) {
@@ -174,7 +196,7 @@ function textOf(input) {
   return "";
 }
 
-function completedInteraction(id, body) {
+function completedInteraction(id, body, cut = false) {
   const model = String(body.model ?? "");
   const prompt = textOf(body.input);
   const system = String(body.system_instruction ?? "");
@@ -205,6 +227,10 @@ function completedInteraction(id, body) {
       : CONVERSATION.map(([speaker, sentence]) => `${speaker === "speaker_0" ? "Clinician" : "Patient"}: ${sentence}`).join("\n");
     usage.input_tokens_by_modality = [{ modality: "AUDIO", tokens: 32 * 20 }];
   } else text = noteFor(prompt, DICTATION_RULES.test(system));
+  if (cut) {
+    const part = firstPart(text);
+    return { id, status: "incomplete", output_text: part, steps: [{ type: "model_output", content: [{ type: "text", text: part }] }], usage };
+  }
   return {
     id,
     status: "completed",
@@ -226,6 +252,7 @@ async function handle(req, res) {
   if (path === "/__reset") {
     log = [];
     failures = [];
+    cuts = [];
     interactions = new Map();
     files = new Map();
     authConfig = { ...NEW_PROJECT_AUTH };
@@ -235,6 +262,10 @@ async function handle(req, res) {
   }
   if (path === "/__fail") {
     failures.push(JSON.parse(raw.toString() || "{}"));
+    return send(res, 200, { ok: true });
+  }
+  if (path === "/__cut") {
+    cuts.push(JSON.parse(raw.toString() || "{}"));
     return send(res, 200, { ok: true });
   }
   if (path === "/__auth_config") {
@@ -310,6 +341,9 @@ async function handle(req, res) {
     entry.dictation = DICTATION_RULES.test(system) || DICTATION_TRANSCRIBE.test(system) || DICTATION_TEMPLATE.test(system);
     const transcription = body.generation_config?.transcription_config;
     if (transcription) entry.diarization = transcription.mode?.diarization_mode ?? "none";
+    entry.thinking = body.generation_config?.thinking_level ?? null;
+    entry.maxOutput = body.generation_config?.max_output_tokens ?? null;
+    const cut = isNoteRequest(body) && takeCut("/v1beta/interactions", entry.thinking === "high");
     const audio = Array.isArray(body.input) ? body.input.find((part) => part.type === "audio") : null;
     if (audio && typeof audio.data === "string") {
       // Audio sent inline (the model test): it must be base64 WAV.
@@ -322,8 +356,8 @@ async function handle(req, res) {
     }
     if (String(body.model).includes("missing")) return send(res, 404, { error: { message: "models/missing is not found for API version v1beta" } });
     const id = `interactions/i${++counter}`;
-    if (!body.background) return send(res, 200, completedInteraction(id, body));
-    interactions.set(id, { body, polls: 0 });
+    if (!body.background) return send(res, 200, completedInteraction(id, body, cut));
+    interactions.set(id, { body, polls: 0, cut });
     return send(res, 200, { id, status: "in_progress" });
   }
   const interactionMatch = path.match(/^\/v1beta\/(interactions\/i\d+)$/);
@@ -337,7 +371,7 @@ async function handle(req, res) {
     if (!item) return send(res, 404, { error: { message: "not found" } });
     item.polls += 1;
     if (item.polls < 2) return send(res, 200, { id, status: "in_progress" });
-    return send(res, 200, completedInteraction(id, item.body));
+    return send(res, 200, completedInteraction(id, item.body, item.cut));
   }
 
   // ---- ElevenLabs speech to text
@@ -374,12 +408,17 @@ async function handle(req, res) {
     const user = String(body.messages?.find((m) => m.role === "user")?.content ?? "");
     const system = String(body.messages?.find((m) => m.role === "system")?.content ?? "");
     entry.dictation = DICTATION_RULES.test(system) || DICTATION_TEMPLATE.test(system);
+    entry.thinking = body.thinking?.type ?? null;
+    entry.maxTokens = body.max_tokens ?? null;
+    const cut = !body.response_format && takeCut("/chat/completions", entry.thinking === "enabled");
     const text = body.response_format ? templateFor(user, DICTATION_TEMPLATE.test(system)) : noteFor(user, DICTATION_RULES.test(system));
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
-    const pieces = text.match(/.{1,40}/gs) ?? [];
+    const pieces = (cut ? firstPart(text) : text).match(/.{1,40}/gs) ?? [];
     for (const piece of pieces) {
-      res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: piece } }] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: piece }, finish_reason: null }] })}\n\n`);
     }
+    // DeepSeek says why it stopped: "length" when the output limit was reached.
+    res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: cut ? "length" : "stop" }] })}\n\n`);
     res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 900, completion_tokens: 250 } })}\n\n`);
     res.write("data: [DONE]\n\n");
     return res.end();

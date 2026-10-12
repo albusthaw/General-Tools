@@ -188,15 +188,17 @@ export function interactionWords(interaction: Interaction): WordInfo[] {
   return words;
 }
 
-export type InteractionState = "done" | "running" | "failed";
+// "incomplete": the answer stopped early, for example at the output limit (which
+// counts the model's thinking too). Its text is cut off, so it is never used as if
+// it were whole.
+export type InteractionState = "done" | "running" | "failed" | "incomplete";
 
 export function interactionState(interaction: Interaction): InteractionState {
   const status = String(interaction?.status ?? "").toLowerCase();
   if (["completed", "complete", "succeeded", "done"].includes(status)) return "done";
   // "requires_action" only happens with tools, which are never used here.
   if (["failed", "cancelled", "canceled", "expired", "error", "requires_action"].includes(status)) return "failed";
-  // Stopped early (for example at the output limit): use the text if there is any.
-  if (status === "incomplete" || status === "budget_exceeded") return interactionText(interaction).trim() ? "done" : "failed";
+  if (status === "incomplete" || status === "budget_exceeded") return "incomplete";
   if (!status && interactionText(interaction).trim()) return "done";
   return "running";
 }
@@ -318,7 +320,8 @@ export async function testText(apiKey: string, model: string): Promise<void> {
   const interaction = await createInteraction(apiKey, {
     model,
     input: "Reply with the single word: ready",
-    generation_config: { thinking_level: "low", max_output_tokens: 256 },
+    // Room for the model's thinking as well as the one word.
+    generation_config: { thinking_level: "low", max_output_tokens: 1024 },
     store: false,
   }, 60_000);
   checkTest(interaction, "text");
@@ -331,7 +334,7 @@ export async function testAudio(apiKey: string, model: string, wav: Uint8Array):
     : {
       model,
       input: [{ type: "text", text: "Transcribe this recording." }, audio],
-      generation_config: { thinking_level: "low", max_output_tokens: 256 },
+      generation_config: { thinking_level: "low", max_output_tokens: 1024 },
       store: false,
     };
   checkTest(await createInteraction(apiKey, body, 60_000), "transcription");
