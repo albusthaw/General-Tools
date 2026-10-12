@@ -51,8 +51,8 @@ public class ScribeNativePlugin extends Plugin {
         }
 
         @Override
-        public void onPart(String scribeId, int seq, long durationMs) {
-            notifyListeners("recorderPart", RecorderCalls.part(scribeId, seq, durationMs));
+        public void onPart(String scribeId, int seq, long durationMs, Gap gapBefore) {
+            notifyListeners("recorderPart", RecorderCalls.part(scribeId, seq, durationMs, gapBefore));
         }
 
         @Override

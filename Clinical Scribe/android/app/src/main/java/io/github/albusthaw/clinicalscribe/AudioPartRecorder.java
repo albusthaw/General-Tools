@@ -17,25 +17,31 @@ import androidx.core.content.ContextCompat;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Records the microphone in parts. Sound is read with AudioRecord, encoded to AAC
  * and written frame by frame to ADTS files (Adts), so each part is usable up to its
  * last frame even after a crash. A new part starts at a frame boundary, so nothing
- * is lost between parts. All the work happens on one thread; pause, resume and
- * stop only set flags that the thread acts on.
+ * is lost between parts. A pause for a call or other sound closes the part, so the
+ * gap always falls between two parts, and the part after it carries the gap (Gap).
+ * All the work happens on one thread; pause, resume and stop only set flags that
+ * the thread acts on.
  */
 final class AudioPartRecorder implements Runnable {
 
     interface Listener {
-        /** A part is complete and closed. */
-        void onPart(int seq, long durationMs);
+        /** A part is complete and closed; gapBefore is the gap it starts after, or null. */
+        void onPart(int seq, long durationMs, Gap gapBefore);
 
         /** The sound level (0 to 1), about ten times a second while recording. */
         void onLevel(float level);
 
         /** The microphone stopped or was silenced; the recording should pause. */
         void onInterrupted(String reason);
+
+        /** Sound is recorded again after a gap; the part seq starts after it. */
+        void onGap(int seq, Gap gap);
 
         /** The thread has finished; failure is null after a normal stop. */
         void onStopped(String failure);
@@ -58,7 +64,10 @@ final class AudioPartRecorder implements Runnable {
 
     private volatile boolean paused;
     private volatile boolean stopping;
+    private volatile boolean closeAtPause;
     private volatile int writingSeq;
+    private final AtomicReference<Gap> nextGap = new AtomicReference<>();
+    private Gap partGap;
     private AudioRecord record;
     private MediaCodec encoder;
     private FileOutputStream out;
@@ -115,12 +124,16 @@ final class AudioPartRecorder implements Runnable {
         release();
     }
 
-    void pause() {
+    /** Pauses; with closePart (a call or other sound) the part ends here, so a gap sits between parts. */
+    void pause(boolean closePart) {
+        if (closePart) closeAtPause = true;
         paused = true;
     }
 
-    void resume() {
+    /** Carries on; gap is the time nothing was recorded, written with the next part, or null. */
+    void resume(Gap gap) {
         synchronized (lock) {
+            if (gap != null) nextGap.set(gap);
             paused = false;
             lock.notifyAll();
         }
@@ -148,6 +161,13 @@ final class AudioPartRecorder implements Runnable {
                 if (paused) {
                     holdWhilePaused();
                     continue;
+                }
+                if (closeAtPause) {
+                    // The pause ended before this thread saw it: the part still ends here,
+                    // so the gap sits between two parts.
+                    closeAtPause = false;
+                    drain(false);
+                    closePart();
                 }
                 int read = record.read(pcm, 0, pcm.length);
                 if (read < 0) {
@@ -181,6 +201,10 @@ final class AudioPartRecorder implements Runnable {
     private void holdWhilePaused() throws IOException {
         stopCapture();
         drain(false);
+        if (closeAtPause) {
+            closeAtPause = false;
+            closePart();
+        }
         synchronized (lock) {
             while (paused && !stopping) {
                 try {
@@ -287,6 +311,10 @@ final class AudioPartRecorder implements Runnable {
     }
 
     private void writeFrame(ByteBuffer data) throws IOException {
+        // A frame still in the encoder from before a gap, while paused with no part
+        // open (a try to start again failed): it is left out, so a gap never makes a
+        // tiny part of its own. It is a few hundredths of a second at most.
+        if (out == null && paused) return;
         byte[] frame = new byte[info.size];
         data.position(info.offset);
         data.limit(info.offset + info.size);
@@ -303,12 +331,23 @@ final class AudioPartRecorder implements Runnable {
         out = new FileOutputStream(files.part(scribeId, seq));
         partFrames = 0;
         writingSeq = seq;
+        // The first part recorded after a gap carries it.
+        partGap = nextGap.getAndSet(null);
+        if (partGap == null) return;
+        try {
+            files.writeGap(scribeId, seq, partGap);
+        } catch (IOException | RuntimeException e) {
+            // The page still hears of the gap with the part; only a crash would lose it.
+        }
+        listener.onGap(seq, partGap);
     }
 
     private void closePart() throws IOException {
         if (out == null) return;
         int doneSeq = seq;
         int frames = partFrames;
+        Gap gap = partGap;
+        partGap = null;
         try {
             out.flush();
             out.getFD().sync();
@@ -317,7 +356,7 @@ final class AudioPartRecorder implements Runnable {
             out = null;
             writingSeq = 0;
         }
-        if (frames > 0) listener.onPart(doneSeq, Adts.durationMs(frames, SAMPLE_RATE));
+        if (frames > 0) listener.onPart(doneSeq, Adts.durationMs(frames, SAMPLE_RATE), gap);
         else files.delete(scribeId, doneSeq);
     }
 

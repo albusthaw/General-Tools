@@ -1,8 +1,11 @@
 package io.github.albusthaw.clinicalscribe;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -12,11 +15,14 @@ import java.util.regex.Pattern;
 
 /**
  * The recorded parts kept in the app's private storage until the page has stored
- * them in its upload queue: recordings/<recording id>/0001.aac, 0002.aac, ...
+ * them in its upload queue: recordings/<recording id>/0001.aac, 0002.aac, ... A part
+ * recorded after a gap (a call or other sound) has a small file beside it with the
+ * gap: 0002.gap.
  */
 final class PartFiles {
 
     static final int MAX_SEQ = 9999;
+    private static final int MAX_GAP_FILE = 64;
     private static final Pattern SCRIBE = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
     private static final Pattern NAME = Pattern.compile("(\\d{4})\\.aac");
 
@@ -46,16 +52,50 @@ final class PartFiles {
         return new File(folder, String.format(Locale.ROOT, "%04d.aac", seq));
     }
 
+    private File gapFile(String scribeId, int seq) {
+        if (!isSeq(seq)) throw new IllegalArgumentException("Part number out of range");
+        return new File(folder(scribeId), String.format(Locale.ROOT, "%04d.gap", seq));
+    }
+
+    /** Keeps the gap a part starts after. The part itself is already there. */
+    void writeGap(String scribeId, int seq, Gap gap) throws IOException {
+        try (FileOutputStream out = new FileOutputStream(gapFile(scribeId, seq))) {
+            out.write(gap.fileText().getBytes(StandardCharsets.US_ASCII));
+            out.getFD().sync();
+        }
+    }
+
+    /** The gap a part starts after, or null. */
+    Gap gap(String scribeId, int seq) {
+        File file = gapFile(scribeId, seq);
+        if (!file.isFile() || file.length() > MAX_GAP_FILE) return null;
+        byte[] data = new byte[(int) file.length()];
+        try (FileInputStream in = new FileInputStream(file)) {
+            int read = 0;
+            while (read < data.length) {
+                int count = in.read(data, read, data.length - read);
+                if (count < 0) return null;
+                read += count;
+            }
+        } catch (IOException e) {
+            return null;
+        }
+        return Gap.fromFileText(new String(data, StandardCharsets.US_ASCII));
+    }
+
     /** One part waiting to be stored by the page. */
     static final class Part {
         final int seq;
         final long bytes;
         final long durationMs;
+        /** The gap the part starts after, or null. */
+        final Gap gap;
 
-        Part(int seq, long bytes, long durationMs) {
+        Part(int seq, long bytes, long durationMs, Gap gap) {
             this.seq = seq;
             this.bytes = bytes;
             this.durationMs = durationMs;
+            this.gap = gap;
         }
     }
 
@@ -72,7 +112,7 @@ final class PartFiles {
             if (seq == skipSeq || !isSeq(seq)) continue;
             Adts.Scan scan = Adts.scan(file);
             if (scan.frames == 0) continue;
-            parts.add(new Part(seq, scan.validBytes, scan.durationMs()));
+            parts.add(new Part(seq, scan.validBytes, scan.durationMs(), gap(scribeId, seq)));
         }
         Collections.sort(parts, (a, b) -> Integer.compare(a.seq, b.seq));
         return parts;
@@ -94,8 +134,12 @@ final class PartFiles {
     }
 
     void delete(String scribeId, int seq) {
-        File file = new File(folder(scribeId), String.format(Locale.ROOT, "%04d.aac", seq));
-        if (isSeq(seq) && file.isFile()) file.delete();
+        if (isSeq(seq)) {
+            File file = new File(folder(scribeId), String.format(Locale.ROOT, "%04d.aac", seq));
+            if (file.isFile()) file.delete();
+            File gap = gapFile(scribeId, seq);
+            if (gap.isFile()) gap.delete();
+        }
         removeIfEmpty(scribeId);
     }
 

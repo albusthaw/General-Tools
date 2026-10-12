@@ -1,9 +1,11 @@
 // A recording never ends by itself. A microphone that stops, or sound played by
 // Clinical Scribe itself, pauses the recording and says why; Resume carries on
 // (opening the microphone again when it had stopped), and the recording is then
-// saved and transcribed as usual.
+// saved and transcribed as usual. Each such pause leaves an information gap: the
+// recorder lists it, and after processing the gap list, the transcript and the note
+// all show where it was.
 import { expect, test } from "@playwright/test";
-import { go, signIn, USER, watchProblems } from "./helpers.mjs";
+import { expectNoSideScroll, go, signIn, USER, watchProblems } from "./helpers.mjs";
 
 // Keeps every microphone stream the page opens, so the test can stop one.
 async function watchMicrophone(page) {
@@ -43,6 +45,11 @@ test("a stopped microphone or sound from the app pauses the recording, and Resum
   await expect(status).toHaveText(/Recording/);
   await expect(page.getByText("The microphone stopped.")).toHaveCount(0);
   expect(await page.evaluate(() => window.__streams.length), "the microphone was opened again").toBe(2);
+  // The recorder lists where it paused by itself.
+  const live = page.locator(".gaps-banner");
+  await expect(live).toContainText("The recording paused by itself once so far");
+  await expect(live.locator("li")).toHaveCount(1);
+  await expect(live.locator("li").first()).toContainText("because of the microphone stopping");
   await page.waitForTimeout(2000);
 
   // Sound played in Clinical Scribe would be recorded too, so the recording pauses.
@@ -71,10 +78,32 @@ test("a stopped microphone or sound from the app pauses the recording, and Resum
   await expect(page.getByText("Paused while sound played in Clinical Scribe. Tap Resume to carry on.")).toBeVisible();
   await page.getByRole("button", { name: "Resume" }).click();
   await expect(status).toHaveText(/Recording/);
+  await expect(live.locator("li")).toHaveCount(2);
   await page.waitForTimeout(1500);
 
   await page.getByRole("button", { name: "Finish" }).click();
   await expect(page.locator(".progress-card")).toBeVisible();
+  // Straight after Finish: where it paused, as soon as the parts have reached the server.
+  const after = page.locator(".gaps-banner");
+  await expect(after).toContainText("The recording paused by itself 2 times", { timeout: 30_000 });
+  await expect(after.locator("li").nth(0)).toContainText("because of the microphone stopping");
+  await expect(after.locator("li").nth(1)).toContainText("because of sound playing in Clinical Scribe");
   await expect(page.getByRole("heading", { name: "Your note is ready" })).toBeVisible({ timeout: 120_000 });
+
+  // After processing: the note points out each gap, and the transcript marks each place.
+  const note = page.locator(".note-card").first();
+  await expect(note.locator(".info-gap")).toHaveCount(2);
+  await expect(note.locator(".info-gap").first()).toContainText(/^There is an information gap after .+\(\d+:\d{2}\)\. Please relate accordingly\.$/);
+  await page.getByRole("button", { name: "Show transcript" }).click();
+  const marks = page.locator(".transcript-body .info-gap");
+  await expect(marks).toHaveCount(2);
+  await expect(marks.nth(0)).toContainText(/^\[Information gap at \d+:\d{2}\. The recording paused for .+ because of the microphone stopping\. Nothing was recorded during this time\.\]$/);
+  await expect(marks.nth(1)).toContainText("because of sound playing in Clinical Scribe");
+
+  // History shows the same.
+  await page.getByRole("link", { name: "Open in History" }).click();
+  await expect(page.locator(".gaps-banner li")).toHaveCount(2);
+  await expect(page.locator(".transcript-body .info-gap")).toHaveCount(2);
+  await expectNoSideScroll(page);
   expect(problems).toEqual([]);
 });

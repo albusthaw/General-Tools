@@ -4,7 +4,10 @@
 //
 // Run: node tests/mock-ai/server.mjs [port]   (default 54399)
 // Test helpers: GET /__log, POST /__reset, POST /__fail {"match": "...", "status": 503, "times": 1}
-// (add "query": "..." to fail only requests whose query string holds that text)
+// (add "query": "..." to fail only requests whose query string holds that text),
+// POST /__cut {"path": "...", "when": "careful" | "always", "times": 1} (notes cut off at
+// the output limit), POST /__notes {"skipGaps": true} (notes that leave out the
+// information gap sentence, as a careless model might)
 // Management API state for the deploy tests: GET or POST /__auth_config, POST /__project
 // {"status": "..."}, POST /__api_keys [...], GET /__secrets.
 
@@ -28,6 +31,8 @@ let log = [];
 let failures = [];
 // Notes cut off at the output limit on purpose: { path, when: "careful" | "always", times }.
 let cuts = [];
+// How notes are written: { skipGaps } leaves out the information gap sentences.
+let noteStyle = {};
 let interactions = new Map();
 let files = new Map();
 let authConfig = { ...NEW_PROJECT_AUTH };
@@ -100,6 +105,10 @@ const DICTATION = "Blood pressure review full stop Reading today 128 over 82 ful
 const DICTATION_RULES = /dictation by one clinician speaking alone/;
 const DICTATION_TRANSCRIBE = /transcribe a clinician's dictation/i;
 const DICTATION_TEMPLATE = /fill in from the clinician's own dictation/;
+// The note rules for information gaps (only when the transcript has one), and the
+// check against anything the transcript does not say (always).
+const GAP_RULE = /starting "\[Information gap at" marks a time/;
+const CHECK_RULE = /check every statement in your note against the (transcript|dictation)/;
 
 function elevenWords(diarize = true) {
   const words = [];
@@ -136,13 +145,23 @@ function headingsFrom(text) {
     .map((line) => line.slice(0, -1));
 }
 
+// The times of the information gaps the request names after the transcript.
+function gapTimesFrom(prompt) {
+  const match = prompt.match(/has \d+ information gaps?, at ([0-9:, ]+)\./);
+  return match ? match[1].split(", ").map((time) => time.trim()) : [];
+}
+
 function noteFor(prompt, dictation = false) {
   const headings = headingsFrom(prompt);
   const list = headings.length ? headings : ["Summary"];
   const lines = dictation
     ? ["- Blood pressure review.", "- Reading today 128/82. Continue ramipril 5 mg once a day.", "- Review in three months."]
     : ["- Cough for two weeks with mild fever since Monday.", "- Temperature 37.9. Chest clear.", "- Viral infection likely. Paracetamol 1 g up to four times a day; return if worse."];
-  return list.map((heading, i) => `${heading}:\n${lines[Math.min(i, 2)]}`).join("\n\n");
+  // Each gap is pointed out in the first section, as the rules ask, unless a test
+  // wants a careless answer.
+  const gaps = noteStyle.skipGaps ? [] : gapTimesFrom(prompt);
+  const gapLines = gaps.map((time) => `There is an information gap after the ${dictation ? "blood pressure reading" : "cough history"} (${time}). Please relate accordingly.`);
+  return list.map((heading, i) => [`${heading}:`, lines[Math.min(i, 2)], ...(i === 0 ? gapLines : [])].join("\n")).join("\n\n");
 }
 
 function templateFor(prompt, dictation = false) {
@@ -253,6 +272,7 @@ async function handle(req, res) {
     log = [];
     failures = [];
     cuts = [];
+    noteStyle = {};
     interactions = new Map();
     files = new Map();
     authConfig = { ...NEW_PROJECT_AUTH };
@@ -266,6 +286,10 @@ async function handle(req, res) {
   }
   if (path === "/__cut") {
     cuts.push(JSON.parse(raw.toString() || "{}"));
+    return send(res, 200, { ok: true });
+  }
+  if (path === "/__notes") {
+    noteStyle = JSON.parse(raw.toString() || "{}");
     return send(res, 200, { ok: true });
   }
   if (path === "/__auth_config") {
@@ -339,6 +363,8 @@ async function handle(req, res) {
     // Which instructions the request carried, for the tests to check.
     const system = String(body.system_instruction ?? "");
     entry.dictation = DICTATION_RULES.test(system) || DICTATION_TRANSCRIBE.test(system) || DICTATION_TEMPLATE.test(system);
+    entry.gapRule = GAP_RULE.test(system);
+    entry.checksNote = CHECK_RULE.test(system);
     const transcription = body.generation_config?.transcription_config;
     if (transcription) entry.diarization = transcription.mode?.diarization_mode ?? "none";
     entry.thinking = body.generation_config?.thinking_level ?? null;
@@ -408,6 +434,8 @@ async function handle(req, res) {
     const user = String(body.messages?.find((m) => m.role === "user")?.content ?? "");
     const system = String(body.messages?.find((m) => m.role === "system")?.content ?? "");
     entry.dictation = DICTATION_RULES.test(system) || DICTATION_TEMPLATE.test(system);
+    entry.gapRule = GAP_RULE.test(system);
+    entry.checksNote = CHECK_RULE.test(system);
     entry.thinking = body.thinking?.type ?? null;
     entry.maxTokens = body.max_tokens ?? null;
     const cut = !body.response_format && takeCut("/chat/completions", entry.thinking === "enabled");

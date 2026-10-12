@@ -106,7 +106,7 @@ Supabase does not serve web pages from its default address: Edge Functions rewri
 2. `MediaRecorder` records Opus in WebM (Chrome, Edge, Firefox, Android) or AAC in MP4 (Safari, iPhone) at 32 kbit/s, which is clear for speech and small (about 14 MB per hour).
 3. Every 5 seconds the newest audio chunk is written to IndexedDB, so a crash or closed tab loses at most a few seconds.
 4. Every 10 minutes the recorder starts a fresh part (a new, self-contained file) and the finished part is uploaded to `recordings/<user>/<scribe>/<part>.webm`, then registered with `register_segment` (RPC), which checks that the file really exists in Storage and belongs to the caller.
-5. Pause and Resume use `MediaRecorder.pause()`/`resume()`. A call, other sound, a muted or stopped microphone, sound played by the app and, on iPhone, a locked screen also pause the recording and never end it: the recorder says why, and Resume carries on in a new part, opening the microphone again when needed. The screen is kept awake with the Wake Lock API while recording. The Android app records with its own recorder instead (`appproject.md`, section 5.1).
+5. Pause and Resume use `MediaRecorder.pause()`/`resume()`. A call, other sound, a muted or stopped microphone, sound played by the app and, on iPhone, a locked screen also pause the recording and never end it: the recorder says why, and Resume carries on in a new part, opening the microphone again when needed. That part carries the gap the pause left (section 16). The screen is kept awake with the Wake Lock API while recording. The Android app records with its own recorder instead, and starts again by itself after a call or other sound (`appproject.md`, section 5.1).
 6. Finish uploads the last part and calls `finish_scribe` (RPC). Failed uploads are retried with back-off and kept in IndexedDB until they succeed, even across a reload. If the tab closes before the last upload finishes, the app finishes the job the next time it is opened.
 
 ### 4.2 On the server
@@ -126,8 +126,8 @@ The worker:
 | Job | What it does |
 | --- | --- |
 | `transcribe_segment` | First measures the part's real length from the file and charges any extra minutes, or stops if there are not enough. ElevenLabs: send the audio part (multipart upload) to `POST /v1/speech-to-text` with diarisation; build "Speaker 1: …" lines from word speaker labels; store `audio_duration_secs`. Gemini: upload the part to the Files API, create a background interaction, poll until complete, read the text and speaker annotations, then delete the interaction and the file from Google. |
-| `finalize_transcript` | Runs when the last part is done. Joins parts in order, saves the transcript, settles the credit to the measured length of all parts, and queues the first note with the template chosen before recording. |
-| `generate_note` | Sends the template text and transcript to the note AI. Gemini runs as a background interaction; DeepSeek streams. Saves the note as final text, only when the service finished its answer (section 15). |
+| `finalize_transcript` | Runs when the last part is done. Joins parts in order, with a line marking each information gap before the part recorded after it (section 16), saves the transcript, settles the credit to the measured length of all parts, and queues the first note with the template chosen before recording. |
+| `generate_note` | Sends the template text and transcript to the note AI. Gemini runs as a background interaction; DeepSeek streams. Saves the note as final text, only when the service finished its answer (section 15), and only with every information gap pointed out (section 16). |
 | `cleanup` | Hourly: deletes audio past the retention period through the Storage API, removes old finished jobs, closes expired record reviews. |
 
 ### 4.4 Status values
@@ -155,7 +155,7 @@ API facts the code relies on:
 Privacy notes shown to admins: use paid plans (free plans may keep or use data); ElevenLabs "zero retention" (`?enable_logging=false`) is an option for Enterprise accounts, checked with ElevenLabs before it is switched on; Gemini interactions and files are deleted as soon as the result is read.
 
 ### 5.1 Prompts and prompt-injection defence
-- System instructions fix the rules: use only what is in the transcript, never invent findings, write "Not discussed" for missing sections, follow the template headings exactly, plain text output, British English. A Voice Note has its own rules (section 14): one clinician dictating, not a conversation, "Not dictated" for missing sections, and spoken punctuation and corrections shape the text but never appear in it.
+- System instructions fix the rules: use only what is in the transcript, never invent, assume or infer anything (not even what is usual or likely), treat the template guidance as what may go in a section rather than a list to fill, write "Not discussed" for missing sections, never guess unclear words, check every statement against the transcript before answering, follow the template headings exactly, plain text output, British English. A transcript with an information gap adds one rule: point out each gap (section 16). A Voice Note has its own rules (section 14): one clinician dictating, not a conversation, "Not dictated" for missing sections, and spoken punctuation and corrections shape the text but never appear in it.
 - Transcript, template and template requests are placed inside clearly marked blocks, and the instructions say that text inside them is data, not instructions. Marker look-alikes inside user text are neutralised before sending.
 - AI output is only ever shown as text (never as HTML) and is stored as final text.
 
@@ -167,7 +167,7 @@ Privacy notes shown to admins: use paid plans (free plans may keep or use data);
 | `app_settings` | single row: AI choices and models, reasoning options, retention, longest recording, Google on/off, email stub fields | Admins through RPC; public part through `get_public_config()` |
 | `templates` | scope (`shared`/`personal`), owner_id, mode (Template Type: `scribe`/`voice`), name, description, body, source_request, is_default (one per mode), is_archived | Shared: everyone signed in; personal: owner |
 | `scribes` | owner_id, mode (`scribe` Clinical Scribe / `voice` Voice Note), title, status, template_id, provider/model snapshot, duration, transcript, error, timestamps | Owner only (admins only through review RPCs) |
-| `scribe_segments` | scribe_id, seq, storage_path, mime_type, bytes, duration, status, transcript, provider_duration | Owner only |
+| `scribe_segments` | scribe_id, seq, storage_path, mime_type, bytes, duration, status, transcript, provider_duration, gap_seconds and gap_reason (the information gap the part starts after) | Owner only |
 | `notes` | scribe_id, owner_id, template snapshot (name and body), provider/model, status, content, error | Owner only; no update or delete by users |
 | `credit_ledger` | user_id, provider, change_seconds, balance_after, kind, scribe_id, actor_id, note | Self; admins |
 | `jobs` | kind, scribe_id, segment_id, note_id, status, state, attempts, run_after, locked_until, last_error | Server only |
@@ -408,3 +408,36 @@ The full plan, with the audit of every part it touches, is in `Voicenote.md`. In
 
 **Tests:** Deno (Gemini states, DeepSeek stop reasons and broken streams, the plain message), and server tests with stand-in services that cut a note off: written again with light thinking for Gemini and DeepSeek, failed with nothing saved when cut off again, and the limits sent.
 
+## 16. Version 1.6.0: information gaps, and notes that never guess
+
+**Asked for:** in the Android app, a recording interrupted by a call, a ringtone or other sound starts again by itself as soon as the interruption ends; where it stopped is shown when the recording finishes and after processing; the note AI is told, and every note says "There is information gap after xxx. Please relate accordingly." whatever the template. Notes must never make up or fill in what the transcript does not say, with rules short enough not to cost many tokens and in line with every template. The sentence is written "There is an information gap after …", with "an" added for correct English.
+
+**Audit (before this version):**
+- The Android recorder paused for a call, other sound or a busy microphone, gave up the audio focus and stopped watching, so it waited for Resume. Sound after Resume went on in the same part, so the place of the pause was lost.
+- Each part is transcribed on its own and the parts are joined in SQL, so a gap that falls between two parts can be marked exactly, without word timings.
+- The note rules said "use only the transcript", but nothing stopped a model from completing every point in a template's guidance, adding usual negatives, or guessing unclear words, and nothing asked it to check its work.
+
+**Android: starting again by itself** (`RecorderHub`, `Interruptions`, `PauseRules`, `AudioPartRecorder`, `PartFiles`, `Gap`):
+- A pause for a call, other sound, a lost or busy microphone (not the person's own pause, nor one from the notification) keeps its place for the audio focus, keeps watching the call state, and keeps a partial wake lock, so it notices the end with the screen off.
+- Every half second it checks: no call or ringing (audio mode), no other app playing (`isMusicActive`) or recording (`getActiveRecordingConfigurations`), and the audio focus given back after a short loan. After 2 seconds of quiet it starts again; after a focus loan that is never handed back, 10 seconds of quiet are enough. A try that finds the microphone busy waits twice as long before the next (up to 30 seconds), and after an hour it stops waiting, lets the phone sleep, and leaves Resume to the person.
+- The pause closes the current part, so the gap always falls between two parts. The first part recorded after it carries the gap in a small file beside it (`0003.gap`: reason and milliseconds), sent with the part to the page, and the state lists the gaps so far for the recorder screen. A try that fails before any sound is recorded continues the same gap.
+- The notification says "Starts again by itself when the call ends" while it waits.
+
+**Website and iPhone web app** (`web-capture.js`): no change to Resume, which the browser needs from the person. The part started on Resume after an interruption carries the gap, so the server and the note treat it the same way.
+
+**Server** (`20261012090000_information_gaps.sql`):
+- `scribe_segments.gap_seconds` and `gap_reason`, readable by the owner. `register_segment` takes both with defaults, so older apps keep working; a gap that makes no sense is left out rather than refusing the audio, and an unknown reason counts as an interruption.
+- `svc_finalize_transcript` puts a line before each part that starts after a gap: "[Information gap at 12:34. The recording paused for 1 minute 20 seconds because of a phone call. Nothing was recorded during this time.]" The time is the measured length of all earlier parts. A recording in which nothing was said gets no gap lines and no note, as before.
+
+**Note writer** (`prompts.ts`, `jobs/note.ts`):
+- Always, in both rule sets: never invent, assume or infer (not even what is usual or likely); the guidance in brackets is what may go in a section, not a list to complete; leave out any point the transcript does not mention; keep only what is certain where words are unclear or `[inaudible]`; check every statement against the transcript before answering. About 450 characters more than before; the test keeps each rule set under 3,200 characters.
+- Only when the transcript has a gap line: one more rule (under 600 characters) asking for the gap sentence on its own line, where the note covers what came just before the gap, whatever the template, and never a guess about the gap; the request names the times.
+- After the answer, any gap whose time no gap sentence names gets the sentence at the end of the note ("There is an information gap after 12:34 in the recording. Please relate accordingly."), so no gap is ever lost.
+- The transcription prompt of Gemini's general models says never to guess a word and to write nothing for silence.
+- No built-in template conflicts: SOAP note already asks for "Not discussed" and for what was discussed or stated; Dictated note asks only for what was dictated. A personal template that asks the AI to suggest things nobody said now gets "Not discussed" there instead.
+
+**Screens:** the recorder card says the Android app starts again by itself, and lists the gaps so far; after Finish the processing screen lists them as soon as the parts reach the server, and History does too (`lib/gaps.js`, `views/scribe/gaps.js`). Gap lines in transcripts and gap sentences in notes are shown in amber.
+
+**Versions.** `VERSION` 1.6.0 and `MIN_SERVER_VERSION` 1.6.0, because the apps send the gap with each part.
+
+**Tests.** Android (Robolectric): a ringing call pauses and recording starts again by itself after it, with the part split and the gap file kept; music waits until it stops; voice commands wait until the sound is given back; a lost microphone is tried again until it works, as one gap; a pause too short for the recorder to notice still splits the part; the person's own pause never ends by itself; after an hour the person resumes; Android 11 too; notification texts. Node: the page passes on the waiting, starting again and gaps, parts carry their gaps into the upload queue, the browser's part after an interruption carries the gap, the gap list and its words. Deno: the rules, the gap rule only with a gap, the short budget, the times found, missing sentences added once. Server: three parts with two gaps give the gap lines at 0:10 and 0:20, the first note points out both, an answer without them gets them at the end, a recording without a gap gets no gap rule, and odd gaps are tidied. Browser: on the website, a stopped microphone and sound from the app are listed on the recorder, after Finish, in the highlighted transcript and note, and in History.

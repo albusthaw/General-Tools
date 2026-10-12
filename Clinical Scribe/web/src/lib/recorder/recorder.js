@@ -1,9 +1,10 @@
 // The recorder. It lives outside the screens, so moving to another page never
 // stops a recording. The sound itself comes from a capture: the browser's
 // microphone (web-capture.js), or in the Android app the phone's own recorder,
-// which carries on with the screen off (app/native/native-capture.js). Finished
-// parts go to the upload queue. A call, other sound or a locked iPhone pauses the
-// recording and says why; it never ends it.
+// which carries on with the screen off and starts again by itself after a call
+// (app/native/native-capture.js). Finished parts go to the upload queue. A call,
+// other sound or a locked iPhone pauses the recording and says why; it never ends
+// it. Each such pause leaves a gap, which the screens list.
 import { discardScribe, startScribe } from "../api/scribes.js";
 import { messageOf, UserError } from "../errors.js";
 import { appHooks } from "../platform/hooks.js";
@@ -27,6 +28,9 @@ const state = {
   error: "",
   notice: "",
   pauseReason: "", // why the recording paused (see capture-rules.js)
+  autoResume: false, // the capture starts again by itself after a call (the Android app)
+  waiting: false, // paused by a call or other sound, until it starts again by itself
+  gaps: [], // where it paused by itself and went on: [{ at, seconds, reason }] (lib/gaps.js)
 };
 
 let session = null; // the capture and timers of the current recording
@@ -92,14 +96,33 @@ function isRefusal(notice) {
   return typeof notice === "string" && notice.startsWith("resume_");
 }
 
+// The gaps so far, and whether the capture waits to start again by itself. A new
+// gap raises a notice, so the recorder screen says where it was.
+function syncGaps() {
+  if (!session) return;
+  const gaps = session.capture.gaps?.() ?? [];
+  const waiting = state.phase === "paused" && Boolean(session.capture.waiting?.());
+  const patch = {};
+  if (gaps.length !== state.gaps.length) {
+    patch.gaps = gaps;
+    if (gaps.length > state.gaps.length) patch.notice = "gap_marked";
+  }
+  if (waiting !== state.waiting) patch.waiting = waiting;
+  if (Object.keys(patch).length) set(patch);
+}
+
 // What a capture says happened by itself.
 const events = {
   onPaused(reason) {
-    if (session && state.phase === "recording") set({ phase: "paused", pauseReason: reason });
+    if (session && state.phase === "recording") set({ phase: "paused", pauseReason: reason, waiting: Boolean(session.capture.waiting?.()) });
   },
-  // Resume pressed in the Android notification.
+  // Resume pressed in the Android notification, or the phone started again by itself.
   onResumed() {
-    if (session && state.phase === "paused") set({ phase: "recording", pauseReason: "", notice: isRefusal(state.notice) ? "" : state.notice });
+    if (session && state.phase === "paused") set({ phase: "recording", pauseReason: "", waiting: false, notice: isRefusal(state.notice) ? "" : state.notice });
+  },
+  // A gap ended, or the phone stopped waiting to start again by itself.
+  onGaps() {
+    syncGaps();
   },
   // The recording ended on the phone: the limit was reached, or it could not carry on.
   onEnded(why) {
@@ -136,8 +159,8 @@ function tick() {
 
 export async function start({ userId, templateId, title, mode = "scribe" }) {
   if (isRecording()) return;
-  set({ phase: "preparing", error: "", notice: "", pauseReason: "", templateId, title, mode });
   const capture = newCapture();
+  set({ phase: "preparing", error: "", notice: "", pauseReason: "", templateId, title, mode, autoResume: Boolean(capture.autoResumes), waiting: false, gaps: [] });
 
   let format;
   try {
@@ -238,10 +261,16 @@ export async function attach(userId) {
     unlimited: Boolean(entry.unlimited),
     creditSecondsLeft: entry.creditSecondsLeft ?? null,
     pauseReason: live.phase === "paused" ? live.reason ?? "" : "",
+    autoResume: Boolean(capture.autoResumes),
+    waiting: false,
+    gaps: [],
     error: "",
     notice: "",
   });
   await capture.attach(live, { ...events, scribeId: entry.scribeId, userId, prefix: entry.prefix, storePart });
+  // The gaps left while the page was closed are listed, without a notice.
+  const gaps = capture.gaps?.() ?? [];
+  set({ gaps, waiting: state.phase === "paused" && Boolean(capture.waiting?.()) });
   if (live.phase !== "recording" && live.phase !== "paused") events.onEnded(live.limitReached ? "limit" : "stopped");
 }
 
@@ -268,7 +297,8 @@ export async function resume() {
     set({ notice: `resume_${refused}`, pauseReason: refused === "in_call" ? "call" : state.pauseReason });
     return;
   }
-  set({ phase: "recording", pauseReason: "", notice: isRefusal(state.notice) ? "" : state.notice });
+  set({ phase: "recording", pauseReason: "", waiting: false, notice: isRefusal(state.notice) ? "" : state.notice });
+  syncGaps();
 }
 
 function release() {
@@ -299,7 +329,7 @@ export async function finish() {
   }
   await requestFinish(scribeId, parts);
   session = null;
-  set({ phase: "done", pauseReason: "" });
+  set({ phase: "done", pauseReason: "", waiting: false });
 }
 
 export async function discard() {
@@ -308,7 +338,7 @@ export async function discard() {
   const { capture } = session;
   release();
   session = null;
-  set({ phase: "idle", scribeId: null, notice: "", pauseReason: "" });
+  set({ phase: "idle", scribeId: null, notice: "", pauseReason: "", waiting: false, gaps: [] });
   await capture.discard();
   await dropScribe(scribeId);
   try {
@@ -324,14 +354,14 @@ export async function abandon() {
   const { capture } = session;
   release();
   session = null;
-  set({ phase: "idle", scribeId: null, notice: "", pauseReason: "", title: "", templateId: null });
+  set({ phase: "idle", scribeId: null, notice: "", pauseReason: "", title: "", templateId: null, waiting: false, gaps: [] });
   await capture.discard();
 }
 
 // Back to the start screen after a recording was handed over.
 export function reset() {
   if (isRecording()) return;
-  set({ phase: "idle", scribeId: null, error: "", notice: "", pauseReason: "", title: "", templateId: null });
+  set({ phase: "idle", scribeId: null, error: "", notice: "", pauseReason: "", title: "", templateId: null, waiting: false, gaps: [] });
 }
 
 export function clearNotice() {

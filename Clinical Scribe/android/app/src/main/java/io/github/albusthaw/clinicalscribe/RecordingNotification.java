@@ -14,8 +14,9 @@ import androidx.core.content.ContextCompat;
 
 /**
  * The notification shown while recording: the time, and Pause or Resume. When the
- * recording paused by itself, it says why in short. It never shows the recording
- * label or anything else about the patient.
+ * recording paused by itself, it says why in short, and that it starts again by
+ * itself when the call or the sound has ended. It never shows the recording label or
+ * anything else about the patient.
  */
 final class RecordingNotification {
 
@@ -45,7 +46,7 @@ final class RecordingNotification {
             String title = context.getString("call".equals(kind) ? R.string.recording_paused_call : R.string.recording_paused);
             builder
                 .setContentTitle(RecordingText.pausedText(title, state.activeMs))
-                .setContentText(context.getString(pausedTextFor(kind)))
+                .setContentText(context.getString(state.waiting ? waitingTextFor(kind) : pausedTextFor(kind)))
                 .setShowWhen(false)
                 .addAction(R.drawable.ic_action_resume, context.getString(R.string.recording_resume), action(context, RecordingService.ACTION_RESUME, RESUME_REQUEST));
         } else {
@@ -65,6 +66,14 @@ final class RecordingNotification {
         if ("other".equals(kind)) return R.string.recording_paused_other_text;
         if ("mic".equals(kind)) return R.string.recording_paused_mic_text;
         return R.string.recording_paused_text;
+    }
+
+    /** While the recording waits to start again by itself. */
+    private static int waitingTextFor(String kind) {
+        if ("call".equals(kind)) return R.string.recording_waiting_call_text;
+        if ("other".equals(kind)) return R.string.recording_waiting_other_text;
+        if ("mic".equals(kind)) return R.string.recording_waiting_mic_text;
+        return R.string.recording_waiting_text;
     }
 
     /** Replaces the shown notification. Skipped when notifications are not allowed (it is hidden then anyway). */

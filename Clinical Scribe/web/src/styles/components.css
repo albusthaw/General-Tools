@@ -538,6 +538,18 @@
   color: var(--warn);
 }
 
+/* The places where a recording paused by itself (views/scribe/gaps.js) */
+.banner .gap-list {
+  margin: 2px 0 0;
+  padding-left: 20px;
+  color: var(--ink-2);
+  font-size: 14.5px;
+}
+
+.banner .gap-list li + li {
+  margin-top: 2px;
+}
+
 .banner.bad {
   background: #fff1f3;
   border-color: rgba(194, 42, 69, 0.35);
@@ -1065,6 +1077,18 @@ dialog.dialog::backdrop {
   display: block;
   padding-left: 18px;
   text-indent: -12px;
+}
+
+/* An information gap: where the recording paused by itself and nothing was recorded. */
+.text-block .info-gap {
+  display: block;
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--warn-line);
+  border-radius: var(--radius-xs);
+  background: #fff7e6;
+  color: var(--warn);
+  font-weight: 600;
 }
 
 .kv {

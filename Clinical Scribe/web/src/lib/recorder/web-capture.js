@@ -3,7 +3,8 @@
 // every 5-second chunk is kept on the device while recording, so a closed tab never
 // loses more than a few seconds. A call, other sound or a locked iPhone pauses the
 // recording and says why. On Resume the microphone is opened again if it stopped,
-// and a new part starts.
+// and a new part starts; it carries the gap the pause left, so the transcript and
+// the note can mark the place.
 import { detectPlatform } from "../platform/detect.js";
 import { captureError, isOwnPause, micMessage } from "./capture-rules.js";
 import { pickFormat } from "./format.js";
@@ -53,6 +54,9 @@ export function createWebCapture(env = {}) {
   let resuming = null;
   let screenLock = null;
   const closing = new Set();
+  // The gap going on now ({ at, since, reason }) and the gaps that ended, in seconds.
+  let gapOpen = null;
+  const gaps = [];
 
   function settle(target) {
     if (target && target.resumedAt !== null) {
@@ -61,8 +65,9 @@ export function createWebCapture(env = {}) {
     }
   }
 
-  function startPart() {
-    const next = { seq: nextSeq++, chunks: [], index: 0, activeMs: 0, resumedAt: now(), discard: false };
+  // gap: the gap this part starts after ({ seconds, reason }), or null.
+  function startPart(gap = null) {
+    const next = { seq: nextSeq++, chunks: [], index: 0, activeMs: 0, resumedAt: now(), discard: false, gap };
     let resolve;
     next.done = new Promise((done) => (resolve = done));
     const recorder = new Recorder(stream, { mimeType: format.full, audioBitsPerSecond: BITRATE });
@@ -91,6 +96,7 @@ export function createWebCapture(env = {}) {
           ext: job.ext,
           prefix: job.prefix,
           userId: job.userId,
+          gap: next.gap,
         }))
         .catch(() => {})
         .finally(resolve);
@@ -134,6 +140,8 @@ export function createWebCapture(env = {}) {
     }
     paused = true;
     reason = why;
+    // A pause the person did not ask for leaves a gap until the recording goes on.
+    if (!isOwnPause(why) && why !== "finish") gapOpen = { at: activeMs / 1000, since: now(), reason: why };
     return true;
   }
 
@@ -227,12 +235,15 @@ export function createWebCapture(env = {}) {
       part.recorder.resume();
     } else {
       // After an interruption the paused file may not carry on cleanly, so it is
-      // kept as it is and a new part starts.
+      // kept as it is and a new part starts, carrying the gap.
       await closePart(part);
       if (ended) return null;
       if (!healthy && !(await reopen())) return "mic";
       if (ended) return null;
-      startPart();
+      const gap = gapOpen ? { seconds: (now() - gapOpen.since) / 1000, reason: gapOpen.reason } : null;
+      startPart(gap);
+      if (gap) gaps.push({ at: gapOpen.at, ...gap });
+      gapOpen = null;
     }
     meter?.wake?.();
     part.resumedAt = now();
@@ -344,6 +355,16 @@ export function createWebCapture(env = {}) {
 
     level() {
       return meter && !paused ? meter.level() : 0;
+    },
+
+    /** Where the recording paused by itself and then went on: [{ at, seconds, reason }], in seconds. */
+    gaps() {
+      return gaps.map((gap) => ({ ...gap }));
+    },
+
+    /** The browser never starts again by itself: the person taps Resume. */
+    waiting() {
+      return false;
     },
   };
 }

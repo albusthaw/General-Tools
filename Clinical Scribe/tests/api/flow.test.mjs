@@ -555,6 +555,90 @@ describe("Clinical Scribe server", () => {
     await state.admin.rpc("admin_update_settings", { p_changes: { note_provider: "gemini", note_reasoning: false } });
   });
 
+  it("marks where a recording paused by itself in the transcript, and every note points it out", async () => {
+    const noteAsks = async (since) => (await mock("/__log")).filter((e) => e.at >= since && e.method === "POST" && e.checksNote);
+    const noteOf = async (id) => await waitFor(async () => {
+      const { data } = await state.alice.from("notes").select("status, content, error_message").eq("id", id).single();
+      return data.status === "done" || data.status === "failed" ? data : null;
+    }, { label: "note" });
+
+    // Three parts: the second was recorded after an 80-second call, the third after
+    // 15 seconds of another app's sound.
+    const { data: scribe } = await state.alice.rpc("start_scribe", { p_template_id: state.soapId, p_title: "Visit with a call", p_mime_type: "audio/webm" });
+    for (const [seq, gap] of [[1, null], [2, { seconds: 80, reason: "call" }], [3, { seconds: 15.4, reason: "other_audio" }]]) {
+      const up = await uploadPart(state.alice, scribe, seq, opusWebm(10));
+      assert.equal(up.error, null, up.error?.message);
+      const reg = await state.alice.rpc("register_segment", {
+        p_scribe_id: scribe.scribe_id,
+        p_seq: seq,
+        p_duration_seconds: 10,
+        p_mime_type: "audio/webm",
+        ...(gap ? { p_gap_seconds: gap.seconds, p_gap_reason: gap.reason } : {}),
+      });
+      assert.equal(reg.error, null, reg.error?.message);
+    }
+    let since = Date.now();
+    const fin = await state.alice.rpc("finish_scribe", { p_scribe_id: scribe.scribe_id, p_segment_count: 3 });
+    assert.equal(fin.error, null, fin.error?.message);
+    await waitTranscribed(state.alice, scribe.scribe_id);
+
+    // The person can read where and why it paused.
+    const { data: rows, error } = await state.alice.from("scribe_segments").select("seq, gap_seconds, gap_reason").eq("scribe_id", scribe.scribe_id).order("seq");
+    assert.equal(error, null, error?.message);
+    assert.deepEqual(rows.map((r) => [r.seq, r.gap_seconds === null ? null : Number(r.gap_seconds), r.gap_reason]), [[1, null, null], [2, 80, "call"], [3, 15.4, "other_audio"]]);
+
+    // Each gap is marked at its exact place in the transcript: after all the sound before it.
+    const { data: row } = await state.alice.from("scribes").select("transcript").eq("id", scribe.scribe_id).single();
+    const blocks = row.transcript.split("\n\n");
+    assert.equal(blocks.length, 5, "part, gap, part, gap, part");
+    assert.equal(blocks[1], "[Information gap at 0:10. The recording paused for 1 minute 20 seconds because of a phone call. Nothing was recorded during this time.]");
+    assert.equal(blocks[3], "[Information gap at 0:20. The recording paused for 15 seconds because of another app playing sound. Nothing was recorded during this time.]");
+    for (const index of [0, 2, 4]) assert.ok(blocks[index].length > 0 && !blocks[index].includes("Information gap"), "the parts' words are kept in order");
+
+    // The first note points out each gap, and the note writer was told how.
+    const { data: first } = await state.alice.from("notes").select("id").eq("scribe_id", scribe.scribe_id).single();
+    const note = await noteOf(first.id);
+    assert.equal(note.status, "done", note.error_message);
+    assert.match(note.content, /^There is an information gap after the cough history \(0:10\)\. Please relate accordingly\.$/m);
+    assert.match(note.content, /^There is an information gap after the cough history \(0:20\)\. Please relate accordingly\.$/m);
+    let asks = await noteAsks(since);
+    assert.equal(asks.length, 1);
+    assert.equal(asks[0].gapRule, true, "the gap rule is sent when the transcript has a gap");
+
+    // An answer that leaves the gaps out still gets them, at the end of the note.
+    await mock("/__notes", { skipGaps: true });
+    const another = await state.alice.rpc("request_note", { p_scribe_id: scribe.scribe_id, p_template_id: state.soapId });
+    assert.equal(another.error, null, another.error?.message);
+    const careless = await noteOf(another.data);
+    await mock("/__notes", {});
+    assert.equal(careless.status, "done", careless.error_message);
+    assert.match(careless.content, /\n\nThere is an information gap after 0:10 in the recording\. Please relate accordingly\.\nThere is an information gap after 0:20 in the recording\. Please relate accordingly\.$/);
+
+    // A recording without a gap gets no gap rule, but the same rules against guessing.
+    since = Date.now();
+    const plain = await recordAndFinish(state.alice, { templateId: state.soapId, seconds: 10 });
+    await waitTranscribed(state.alice, plain.scribe_id);
+    const { data: plainNote } = await state.alice.from("notes").select("id").eq("scribe_id", plain.scribe_id).single();
+    const written = await noteOf(plainNote.id);
+    assert.ok(!written.content.includes("information gap"));
+    asks = await noteAsks(since);
+    assert.equal(asks.length, 1);
+    assert.equal(asks[0].gapRule, false);
+
+    // A gap that makes no sense is left out rather than refusing the audio, and an
+    // unknown reason counts as an interruption.
+    const { data: odd } = await state.alice.rpc("start_scribe", { p_template_id: null, p_title: "", p_mime_type: "audio/webm" });
+    for (const [seq, gapSeconds, gapReason] of [[1, -5, "call"], [2, 99_999, "spaceship"]]) {
+      const up = await uploadPart(state.alice, odd, seq, opusWebm(5));
+      assert.equal(up.error, null, up.error?.message);
+      const reg = await state.alice.rpc("register_segment", { p_scribe_id: odd.scribe_id, p_seq: seq, p_duration_seconds: 5, p_mime_type: "audio/webm", p_gap_seconds: gapSeconds, p_gap_reason: gapReason });
+      assert.equal(reg.error, null, reg.error?.message);
+    }
+    const { data: oddRows } = await state.alice.from("scribe_segments").select("seq, gap_seconds, gap_reason").eq("scribe_id", odd.scribe_id).order("seq");
+    assert.deepEqual(oddRows.map((r) => [r.seq, r.gap_seconds === null ? null : Number(r.gap_seconds), r.gap_reason]), [[1, null, null], [2, 86400, "interrupted"]]);
+    await state.alice.rpc("discard_scribe", { p_scribe_id: odd.scribe_id });
+  });
+
   it("retries temporary problems and refunds credit when processing finally fails", async () => {
     const before = (await state.alice.rpc("get_my_context")).data.credit.seconds_left;
     await mock("/__fail", { match: "/v1/speech-to-text", status: 400, message: "Audio file is corrupted", times: 1 });

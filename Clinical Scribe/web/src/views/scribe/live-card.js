@@ -1,14 +1,17 @@
 // The card shown while recording: time, sound level, Pause or Resume, Finish and
-// Discard, with the recording's type and template.
+// Discard, with the recording's type and template, why it paused by itself, and
+// where it paused by itself so far.
 import { button } from "../../components/button.js";
 import { modeChip } from "../../components/cards.js";
 import { confirmDialog } from "../../components/dialog.js";
 import { banner } from "../../components/feedback.js";
 import { h, replace } from "../../lib/dom.js";
 import { clock } from "../../lib/format.js";
+import { modeOf } from "../../lib/modes.js";
 import { appHooks } from "../../lib/platform/hooks.js";
 import { pausedMessage } from "../../lib/recorder/capture-rules.js";
 import * as recorder from "../../lib/recorder/recorder.js";
+import { gapsBanner } from "./gaps.js";
 
 function meter() {
   const bars = Array.from({ length: 28 }, () => h("span", { class: "meter-bar" }));
@@ -40,9 +43,11 @@ export function drawRecording(stage, state, templates, notices) {
 
   const templateName = templates.find((t) => t.id === state.templateId)?.name ?? "No template";
   const notice = state.notice && notices[state.notice] ? banner({ kind: notices[state.notice].kind, text: notices[state.notice].text }) : null;
-  // Why the recording paused by itself (a call, other sound, a locked screen).
-  const why = paused ? pausedMessage(state.pauseReason) : null;
+  // Why the recording paused by itself (a call, other sound, a locked screen), and
+  // whether the Android app will start again by itself.
+  const why = paused ? pausedMessage(state.pauseReason, { waiting: state.waiting }) : null;
   const pausedNote = why ? banner({ kind: "warn", text: why }) : null;
+  const gapsNote = gapsBanner(state.gaps, { live: true, noun: modeOf(state.mode).noun });
 
   const pauseButton = button(paused ? "Resume" : "Pause", { icon: paused ? "play" : "pause", size: "large", disabled: finishing });
   pauseButton.addEventListener("click", () => (paused ? recorder.resume() : recorder.pause()));
@@ -76,7 +81,7 @@ export function drawRecording(stage, state, templates, notices) {
     h("p", { class: "record-hint", text: "Keep this screen open. Your audio is saved as you go." }),
   );
   const extras = appHooks.recorderExtras?.(card, { phase: state.phase });
-  replace(stage, h("div", { class: "stack" }, pausedNote, notice, card));
+  replace(stage, h("div", { class: "stack" }, pausedNote, notice, card, gapsNote));
 
   return () => {
     clearInterval(tick);

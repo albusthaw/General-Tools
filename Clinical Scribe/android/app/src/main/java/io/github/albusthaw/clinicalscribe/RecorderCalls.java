@@ -25,14 +25,25 @@ final class RecorderCalls {
         answer.put("reason", state.reason);
         answer.put("activeMs", state.activeMs);
         answer.put("limitReached", state.limitReached);
+        answer.put("waiting", state.waiting);
+        JSArray gaps = new JSArray();
+        for (Gap gap : state.gaps) {
+            JSObject item = new JSObject();
+            item.put("atMs", gap.atMs);
+            item.put("gapMs", gap.ms);
+            item.put("reason", gap.reason);
+            gaps.put(item);
+        }
+        answer.put("gaps", gaps);
         return answer;
     }
 
-    static JSObject part(String scribeId, int seq, long durationMs) {
+    static JSObject part(String scribeId, int seq, long durationMs, Gap gap) {
         JSObject answer = new JSObject();
         answer.put("scribeId", scribeId);
         answer.put("seq", seq);
         answer.put("durationMs", durationMs);
+        putGap(answer, gap);
         return answer;
     }
 
@@ -43,11 +54,19 @@ final class RecorderCalls {
             item.put("seq", part.seq);
             item.put("bytes", part.bytes);
             item.put("durationMs", part.durationMs);
+            putGap(item, part.gap);
             list.put(item);
         }
         JSObject answer = new JSObject();
         answer.put("parts", list);
         return answer;
+    }
+
+    /** The gap a part starts after: how long nothing was recorded, and why. */
+    private static void putGap(JSObject item, Gap gap) {
+        if (gap == null) return;
+        item.put("gapMs", gap.ms);
+        item.put("gapReason", gap.reason);
     }
 
     static JSObject recordings(List<String> ids) {

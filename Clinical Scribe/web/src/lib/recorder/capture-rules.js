@@ -5,7 +5,8 @@
 import { UserError } from "../errors.js";
 
 // A call, other sound, a locked screen or a lost microphone never ends a recording.
-// It pauses with one of these reasons, and the person taps Resume when ready.
+// It pauses with one of these reasons, and the person taps Resume when ready (the
+// Android app starts again by itself: see WAITING).
 const PAUSED = {
   call: "Paused for a phone call. Tap Resume when you are ready.",
   other_audio: "Paused because another app played sound. Tap Resume to carry on.",
@@ -16,12 +17,24 @@ const PAUSED = {
   mic_busy: "Another app is using the microphone. Tap Resume to try again.",
 };
 
+// The same pauses in the Android app, which starts recording again by itself once
+// the call or the sound has ended.
+const WAITING = {
+  call: "Paused for a phone call. Recording starts again by itself when the call ends.",
+  other_audio: "Paused because another app played sound. Recording starts again by itself when the sound stops.",
+  mic_lost: "The microphone stopped. Recording starts again by itself when it works again.",
+  mic_busy: "Another app is using the microphone. Recording starts again by itself when it is free.",
+};
+
 // Pauses the person made (in the app, or in the Android notification).
 const OWN_PAUSES = new Set(["user", "notification"]);
 
-/** The message for a pause the person did not ask for, or null. */
-export function pausedMessage(reason) {
-  return PAUSED[reason] ?? null;
+/**
+ * The message for a pause the person did not ask for, or null. waiting: the Android
+ * app will start again by itself; otherwise the person taps Resume.
+ */
+export function pausedMessage(reason, { waiting = false } = {}) {
+  return (waiting && WAITING[reason]) || PAUSED[reason] || null;
 }
 
 export function isOwnPause(reason) {

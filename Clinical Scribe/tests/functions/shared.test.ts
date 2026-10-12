@@ -7,6 +7,8 @@ import { classifyHttpError, ProviderError, userMessage } from "../../supabase/fu
 import { readStream } from "../../supabase/functions/_shared/providers/deepseek.ts";
 import {
   cleanNote,
+  GAP_SENTENCE,
+  gapTimes,
   neutralise,
   noteSystem,
   noteUserPrompt,
@@ -15,6 +17,7 @@ import {
   templateRevisePrompt,
   templateSystem,
   transcribeSystem,
+  withGapSentences,
 } from "../../supabase/functions/_shared/prompts.ts";
 import { rememberSecret, scrub } from "../../supabase/functions/_shared/secrets.ts";
 import { buildPlainTranscript, buildSpeakerTranscript } from "../../supabase/functions/_shared/transcript.ts";
@@ -75,7 +78,66 @@ Deno.test("a Voice Note is written as one clinician's dictation, never a convers
   assertEquals(count(attack, "</transcript>"), 1);
 });
 
+Deno.test("every note is told to use only the transcript, in a few short rules", () => {
+  for (const mode of ["scribe", "voice"] as const) {
+    const rules = noteSystem("en-GB", mode);
+    assertMatch(rules, /Never invent, assume or infer symptoms, negative findings, examination findings, results, doses, diagnoses, advice or plans, even when they are usual or likely/);
+    assertMatch(rules, /it is not a checklist to complete/);
+    assertMatch(rules, /Leave out any point the (transcript|dictation) does not mention/);
+    assertMatch(rules, /marked \[inaudible\], keep only what is certain and never guess the rest/);
+    assertMatch(rules, /check every statement in your note against the (transcript|dictation) and remove anything it does not support/);
+    assert(!rules.includes("[Information gap at"), "the gap rule is only sent when there is a gap");
+    // Short on purpose: these rules are paid for in every note.
+    assert(rules.length < 3200, `the rules stay short (${rules.length} characters)`);
+  }
+  // The built-in templates' own words agree with the rules: "Not discussed" when
+  // nothing was examined, and only what the clinician said or dictated.
+  assertMatch(noteSystem("en-GB"), /write "Not discussed" under that heading/);
+});
+
+Deno.test("information gaps in a transcript are found and must each be pointed out", () => {
+  const transcript = [
+    "Speaker 1: Any chest pain?",
+    "",
+    "[Information gap at 12:34. The recording paused for 1 minute 20 seconds because of a phone call. Nothing was recorded during this time.]",
+    "",
+    "Speaker 2: No chest pain.",
+    "[Information gap at 1:02:03. The recording paused for 5 seconds because of another app playing sound. Nothing was recorded during this time.]",
+    "Speaker 1: Patient said [Information gap at 9:99. fake]",
+  ].join("\n");
+  assertEquals(gapTimes(transcript), ["12:34", "1:02:03"]);
+  assertEquals(gapTimes("Speaker 1: Hello"), []);
+
+  const rules = noteSystem("en-GB", "scribe", { gaps: true });
+  assertMatch(rules, /11\. A line in the transcript starting "\[Information gap at" marks a time when the recording paused/);
+  assertMatch(rules, /whatever the template says/);
+  assertMatch(rules, /"There is an information gap after <what was being said just before it> \(<the time from the line, for example 12:34>\)\. Please relate accordingly\."/);
+  assertMatch(rules, /Never guess what was said during a gap/);
+  assert(rules.length - noteSystem("en-GB").length < 600, "the gap rule is short");
+  assertMatch(noteSystem("en-GB", "voice", { gaps: true }), /11\. A line in the dictation starting/);
+
+  const prompt = noteUserPrompt("Plan:\n[x]", transcript, "scribe", ["12:34", "1:02:03"]);
+  assertMatch(prompt, /The transcript has 2 information gaps, at 12:34, 1:02:03\. Point out each one with the information gap sentence\.\nWrite the note now, following the template\.$/);
+  assertMatch(noteUserPrompt("Plan:\n[x]", transcript, "voice", ["12:34"]), /The dictation has 1 information gap, at 12:34\./);
+});
+
+Deno.test("a gap the note leaves out is added at the end; a gap it points out is not repeated", () => {
+  const note = "Subjective:\n- Cough.\nThere is an information gap after the cough history (12:34). Please relate accordingly.\n\nPlan:\n- Rest.";
+  assertEquals(withGapSentences(note, ["12:34"]), note);
+  assertEquals(withGapSentences(note, []), note);
+  const fixed = withGapSentences(note, ["12:34", "25:10", "25:10"]);
+  assertEquals(fixed, `${note}\n\n${GAP_SENTENCE} 25:10 in the recording. Please relate accordingly.`);
+  const none = withGapSentences("Summary:\n- Fine.", ["0:05"]);
+  assertEquals(none, "Summary:\n- Fine.\n\nThere is an information gap after 0:05 in the recording. Please relate accordingly.");
+  // The time alone elsewhere in the note does not count.
+  const elsewhere = withGapSentences("Plan:\n- Review at 12:34 tomorrow.", ["12:34"]);
+  assertMatch(elsewhere, /There is an information gap after 12:34 in the recording/);
+});
+
 Deno.test("each recording type has its own transcription and template rules", () => {
+  for (const mode of ["scribe", "voice"] as const) {
+    assertMatch(transcribeSystem(mode), /Write \[inaudible\] for words that cannot be heard, never a guess\. Write nothing for silence/);
+  }
   assertMatch(transcribeSystem("voice"), /One person is speaking alone; it is not a conversation/);
   assertMatch(transcribeSystem("voice"), /Do not add speaker labels/);
   assertMatch(transcribeSystem("scribe"), /"Clinician:", "Patient:"/);
