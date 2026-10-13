@@ -1,8 +1,9 @@
 // Unit tests for recording from the browser's microphone (web-capture.js) with
 // stand-ins for the browser: parts are handed on, a call, a muted or stopped
 // microphone, a locked iPhone and the audio session pause the recording with a
-// reason instead of ending it, and Resume opens the microphone again when needed.
-// Also the shared pause messages and the Screen off rules.
+// reason instead of ending it, Resume opens the microphone again when needed, and
+// the part after such a pause carries the gap it left. Also the shared pause
+// messages and the Screen off rules.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { canStayUnlocked, isFaceDown, timerSpot } from "../../web/src/app/screen-off-rules.js";
@@ -286,12 +287,55 @@ test("a browser that cannot record, or a blocked microphone, gets a clear messag
   await assert.rejects(browser.capture().prepare(), (error) => error instanceof UserError && /blocked/.test(error.message));
 });
 
+test("an interruption leaves a gap that the next part carries; the person's own pause leaves none", async () => {
+  const browser = fakeBrowser();
+  const capture = browser.capture();
+  await capture.prepare();
+  await capture.begin(browser.job({ segmentSeconds: 600 }));
+  assert.equal(capture.waiting(), false, "the browser never starts again by itself");
+  browser.advance(2000);
+  browser.streams[0].tracks[0].mute();
+  browser.advance(30_000);
+  assert.deepEqual(capture.gaps(), [], "a gap counts once the recording goes on");
+  assert.equal(await capture.resume(), null);
+  assert.deepEqual(capture.gaps(), [{ at: 2, seconds: 30, reason: "interrupted" }]);
+
+  browser.advance(3000);
+  capture.pause("user");
+  browser.advance(5000);
+  assert.equal(await capture.resume(), null);
+  assert.equal(capture.gaps().length, 1, "the person's own pause is no gap");
+
+  browser.advance(1000);
+  browser.streams.at(-1).tracks[0].end();
+  browser.media.failNext = 1;
+  browser.advance(4000);
+  assert.equal(await capture.resume(), "mic");
+  browser.advance(6000);
+  assert.equal(await capture.resume(), null);
+  assert.deepEqual(capture.gaps()[1], { at: 6, seconds: 10, reason: "mic_lost" }, "a Resume that failed does not end the gap");
+
+  await capture.finish();
+  assert.deepEqual(browser.stored.map((part) => [part.seq, part.gap]), [
+    [1, null],
+    [2, { seconds: 30, reason: "interrupted" }],
+    [3, { seconds: 10, reason: "mic_lost" }],
+  ]);
+});
+
 test("every pause by itself has a message; the person's own pauses have none", () => {
   for (const reason of ["call", "other_audio", "interrupted", "hidden", "media", "mic_lost", "mic_busy"]) {
     assert.ok(pausedMessage(reason)?.includes("Resume"), `${reason} explains how to carry on`);
   }
+  // The Android app starts again by itself after a call, other sound or a busy microphone.
+  for (const reason of ["call", "other_audio", "mic_lost", "mic_busy"]) {
+    assert.match(pausedMessage(reason, { waiting: true }), /starts again by itself/, `${reason} says it starts again by itself`);
+  }
+  assert.match(pausedMessage("call", { waiting: true }), /when the call ends/);
+  assert.ok(pausedMessage("hidden", { waiting: true }).includes("Resume"), "pauses the phone never ends itself still ask for Resume");
   for (const reason of ["user", "notification"]) {
     assert.equal(pausedMessage(reason), null);
+    assert.equal(pausedMessage(reason, { waiting: true }), null);
     assert.equal(isOwnPause(reason), true);
   }
   assert.equal(isOwnPause("call"), false);

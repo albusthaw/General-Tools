@@ -1,6 +1,8 @@
 // Shows notes and transcripts as readable text: section headings in bold, list
-// lines indented, speaker labels highlighted. Everything is set as plain text.
+// lines indented, speaker labels highlighted, and information gaps (where the
+// recording paused by itself) marked in amber. Everything is set as plain text.
 import { h } from "../lib/dom.js";
+import { isGapMarker, isGapSentence } from "../lib/gaps.js";
 
 const HEADING = /^[^\n:]{1,60}:$/;
 const SPEAKER = /^((?:Speaker \d+|Speaker|Clinician|Patient|Doctor|Nurse|Relative|Carer|Interpreter|Parent|Other)(?: \d+)?):\s?(.*)$/i;
@@ -16,6 +18,8 @@ export function noteView(text) {
     const trimmed = line.trim();
     if (!trimmed) {
       box.append(gap());
+    } else if (isGapSentence(trimmed)) {
+      box.append(h("span", { class: "line info-gap", text: trimmed.replace(/^[-•*]\s+/, "") }));
     } else if (HEADING.test(trimmed)) {
       box.append(h("span", { class: "heading-line", text: trimmed }));
     } else if (/^[-•*]\s+/.test(trimmed)) {
@@ -32,6 +36,10 @@ export function transcriptView(text) {
   for (const line of String(text ?? "").replace(/\r\n?/g, "\n").split("\n")) {
     if (!line.trim()) {
       box.append(gap());
+      continue;
+    }
+    if (isGapMarker(line)) {
+      box.append(h("span", { class: "line info-gap", text: line.trim() }));
       continue;
     }
     const match = line.match(SPEAKER);

@@ -1,10 +1,12 @@
 // Writes a note from a transcript with the template text saved on the note. A note
 // is saved only when the AI service finished its answer: an answer cut off at the
-// output limit is never saved as if it were the whole note.
+// output limit is never saved as if it were the whole note. Every information gap
+// marked in the transcript (a pause for a call or other sound) is pointed out in the
+// note, whatever the template.
 import { ProviderError } from "../../_shared/errors.ts";
 import * as deepseek from "../../_shared/providers/deepseek.ts";
 import * as gemini from "../../_shared/providers/gemini.ts";
-import { cleanNote, noteSystem, noteUserPrompt, recordingMode, type Spelling } from "../../_shared/prompts.ts";
+import { cleanNote, gapTimes, noteSystem, noteUserPrompt, recordingMode, type Spelling, withGapSentences } from "../../_shared/prompts.ts";
 import { getSecret } from "../../_shared/secrets.ts";
 import { adminClient, rpc } from "../../_shared/supabase.ts";
 import { runGeminiInteraction } from "../gemini-flow.ts";
@@ -53,8 +55,9 @@ export async function generateNote(job: Job, ctx: JobContext): Promise<Outcome> 
   }
 
   await rpc("svc_note_started", { p_note_id: note.id });
-  const system = noteSystem(note.spelling, mode);
-  const user = noteUserPrompt(note.template_body, transcript, mode);
+  const gaps = gapTimes(transcript);
+  const system = noteSystem(note.spelling, mode, { gaps: gaps.length > 0 });
+  const user = noteUserPrompt(note.template_body, transcript, mode, gaps);
 
   // Careful reasoning thinks at length, and the thinking uses the same output limit
   // as the note. After an answer was cut off, the note is written once more with
@@ -115,8 +118,9 @@ export async function generateNote(job: Job, ctx: JobContext): Promise<Outcome> 
     throw error;
   }
 
-  const cleaned = cleanNote(content);
-  if (!cleaned) throw new ProviderError("invalid_output", note.provider, "The note came back empty.");
+  const written = cleanNote(content);
+  if (!written) throw new ProviderError("invalid_output", note.provider, "The note came back empty.");
+  const cleaned = withGapSentences(written, gaps);
 
   await rpc("svc_record_usage", {
     p_user: note.owner_id,

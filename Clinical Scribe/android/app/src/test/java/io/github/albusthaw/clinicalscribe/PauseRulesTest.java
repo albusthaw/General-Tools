@@ -41,6 +41,38 @@ public class PauseRulesTest {
     }
 
     @Test
+    public void onlyPausesAndroidMadeEndByThemselves() {
+        assertTrue(PauseRules.resumesByItself(PauseRules.CALL));
+        assertTrue(PauseRules.resumesByItself(PauseRules.OTHER_AUDIO));
+        assertTrue(PauseRules.resumesByItself(PauseRules.MIC_LOST));
+        assertTrue(PauseRules.resumesByItself(PauseRules.MIC_BUSY));
+        assertFalse("the person's own pause stays", PauseRules.resumesByItself(PauseRules.USER));
+        assertFalse(PauseRules.resumesByItself(PauseRules.NOTIFICATION));
+        assertFalse(PauseRules.resumesByItself(""));
+        assertFalse(PauseRules.resumesByItself(null));
+    }
+
+    @Test
+    public void startsAgainOnlyAfterSomeQuiet() {
+        long settle = PauseRules.SETTLE_MS;
+        assertEquals("a call or other sound is still going on", PauseRules.WAIT, PauseRules.nextStep(true, false, 0, 60_000, settle));
+        assertEquals("quiet, but not for long enough", PauseRules.WAIT, PauseRules.nextStep(false, false, 1_000, 60_000, settle));
+        assertEquals(PauseRules.RESUME, PauseRules.nextStep(false, false, 2_000, 60_000, settle));
+        assertEquals("another app will give the sound back", PauseRules.WAIT, PauseRules.nextStep(false, true, 5_000, 60_000, settle));
+        assertEquals("it never did, but all is quiet", PauseRules.RESUME, PauseRules.nextStep(false, true, PauseRules.LONG_QUIET_MS, 60_000, settle));
+        assertEquals("waited an hour", PauseRules.GIVE_UP, PauseRules.nextStep(true, false, 0, PauseRules.MAX_WAIT_MS, settle));
+    }
+
+    @Test
+    public void waitsLongerAfterEachTryThatFoundTheMicrophoneBusy() {
+        assertEquals(2_000, PauseRules.settleFor(0));
+        assertEquals(4_000, PauseRules.settleFor(1));
+        assertEquals(8_000, PauseRules.settleFor(2));
+        assertEquals(30_000, PauseRules.settleFor(4));
+        assertEquals(30_000, PauseRules.settleFor(40));
+    }
+
+    @Test
     public void picksTheNotificationMessage() {
         assertEquals("call", PauseRules.messageKind(PauseRules.CALL));
         assertEquals("other", PauseRules.messageKind(PauseRules.OTHER_AUDIO));

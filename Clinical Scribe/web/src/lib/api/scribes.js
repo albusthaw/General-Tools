@@ -12,12 +12,15 @@ async function call(name, args) {
 export const startScribe = ({ templateId, title, mimeType, mode = "scribe" }) =>
   call("start_scribe", { p_template_id: templateId ?? null, p_title: title ?? "", p_mime_type: mimeType, p_mode: mode });
 
-export const registerSegment = ({ scribeId, seq, durationSeconds, mimeType }) =>
+// gap: the gap the part starts after ({ seconds, reason }), when the recording
+// paused by itself before it; it is sent only then.
+export const registerSegment = ({ scribeId, seq, durationSeconds, mimeType, gap = null }) =>
   call("register_segment", {
     p_scribe_id: scribeId,
     p_seq: seq,
     p_duration_seconds: Math.round(durationSeconds * 100) / 100,
     p_mime_type: mimeType,
+    ...(gap ? { p_gap_seconds: Math.round(Math.max(0, Number(gap.seconds) || 0) * 100) / 100, p_gap_reason: String(gap.reason ?? "") } : {}),
   });
 
 export const finishScribe = (scribeId, segmentCount) =>
@@ -57,10 +60,11 @@ export async function getScribe(id) {
   return data;
 }
 
+// Each part with its length and the gap it starts after (lib/gaps.js).
 export async function getSegments(scribeId) {
   const { data, error } = await supabase
     .from("scribe_segments")
-    .select("id, seq, status, duration_seconds")
+    .select("id, seq, status, duration_seconds, measured_seconds, gap_seconds, gap_reason")
     .eq("scribe_id", scribeId)
     .order("seq");
   if (error) throw fromDatabase(error);

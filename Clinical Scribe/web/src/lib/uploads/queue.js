@@ -147,7 +147,7 @@ function waitBeforeRetry() {
 
 async function uploadOne(part) {
   await uploadPart(partPath(part), part.blob, part.mime);
-  await registerSegment({ scribeId: part.scribeId, seq: part.seq, durationSeconds: part.duration, mimeType: part.mime });
+  await registerSegment({ scribeId: part.scribeId, seq: part.seq, durationSeconds: part.duration, mimeType: part.mime, gap: part.gap ?? null });
 }
 
 async function run() {

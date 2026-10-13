@@ -85,8 +85,9 @@ export async function renderRecord(container, route) {
   };
 
   const stop = recorder.onRecorderChange((state) => {
-    // Redraw when the phase changes; notices update the current view.
-    const key = `${state.mode}:${state.phase}`;
+    // Redraw when the phase changes, or the waiting to start again by itself; notices
+    // (a new gap among them: "gap_marked") update the current view.
+    const key = `${state.mode}:${state.phase}:${state.waiting}`;
     if (key !== lastPhase || state.phase === "error" || state.notice) {
       lastPhase = key;
       draw(state);

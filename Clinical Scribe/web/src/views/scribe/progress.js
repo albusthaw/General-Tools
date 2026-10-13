@@ -1,5 +1,6 @@
 // Shows what happens after Finish: saving audio, transcribing, writing the note,
-// then the note and transcript. It checks the server every few seconds while
+// then the note and transcript. Where the recording paused by itself is listed as
+// soon as its parts reach the server. It checks the server every few seconds while
 // the page is open; the work itself carries on even if the page is closed.
 import { button, withBusy } from "../../components/button.js";
 import { noteCard, transcriptCard } from "../../components/cards.js";
@@ -7,12 +8,14 @@ import { banner, chip, toast } from "../../components/feedback.js";
 import { getNotes, getScribe, getSegments, retryNote, retryScribe } from "../../lib/api/scribes.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
+import { gapsOf } from "../../lib/gaps.js";
 import { icon } from "../../lib/icons.js";
 import { modeOf } from "../../lib/modes.js";
 import { href } from "../../lib/router.js";
 import { onQueueChange, pendingFor, status as queueStatus } from "../../lib/uploads/queue.js";
 import { refreshContext } from "../app.js";
 import { anotherNoteForm } from "./another-note.js";
+import { gapsBanner } from "./gaps.js";
 
 const POLL_MS = 3000;
 
@@ -202,6 +205,7 @@ export function renderProgress(stage, scribeId, { templates, notice = null, mode
         notice ? banner({ kind: notice.kind, text: notice.text }) : null,
         problems,
         progress,
+        gapsBanner(gapsOf(segments), { noun: type.noun }),
         noteCards,
         scribe.status === "transcribed" ? anotherNoteForm(scribeId, templates, () => schedule(0)) : null,
         scribe.status === "transcribed" && scribe.transcript ? transcriptCard(scribe.transcript, { collapsed: notes.length > 0 }) : null,

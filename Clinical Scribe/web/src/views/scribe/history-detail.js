@@ -1,15 +1,17 @@
-// One recording in History: its type, its transcript and every note written from
-// it. The notes open and close; only the newest is open at first.
+// One recording in History: its type, where it paused by itself, its transcript
+// and every note written from it. The notes open and close; only the newest is
+// open at first.
 import { button, withBusy } from "../../components/button.js";
 import { modeChip, noteCard, statusChip, transcriptCard } from "../../components/cards.js";
 import { banner, loading, toast } from "../../components/feedback.js";
 import { segmented } from "../../components/fields.js";
 import { menuButton } from "../../components/menu.js";
-import { finishScribe, getNotes, getScribe, retryNote, retryScribe } from "../../lib/api/scribes.js";
+import { finishScribe, getNotes, getScribe, getSegments, retryNote, retryScribe } from "../../lib/api/scribes.js";
 import { listTemplates } from "../../lib/api/templates.js";
 import { h, replace } from "../../lib/dom.js";
 import { messageOf } from "../../lib/errors.js";
 import { dateTime, duration, timeOnly } from "../../lib/format.js";
+import { gapsOf } from "../../lib/gaps.js";
 import { icon } from "../../lib/icons.js";
 import { modeOf } from "../../lib/modes.js";
 import { appHooks } from "../../lib/platform/hooks.js";
@@ -17,6 +19,7 @@ import { href, navigate } from "../../lib/router.js";
 import { refreshContext } from "../app.js";
 import { scribeTabs } from "../shell.js";
 import { anotherNoteForm } from "./another-note.js";
+import { gapsBanner } from "./gaps.js";
 import { deleteRecording, renameRecording } from "./recording-actions.js";
 import { templatesOfMode } from "./template-options.js";
 
@@ -49,7 +52,7 @@ export async function renderHistoryDetail(container, route) {
 
   async function load() {
     try {
-      const [scribe, latest] = await Promise.all([getScribe(scribeId), getNotes(scribeId)]);
+      const [scribe, latest, parts] = await Promise.all([getScribe(scribeId), getNotes(scribeId), getSegments(scribeId).catch(() => [])]);
       if (stopped) return;
       if (!scribe) {
         replace(body, banner({ kind: "info", title: "This recording is not available", text: "It may have been deleted." }));
@@ -62,7 +65,7 @@ export async function renderHistoryDetail(container, route) {
         appHooks.pageParent?.(mode.historyPath);
       }
       notes = latest;
-      draw(scribe);
+      draw(scribe, gapsOf(parts));
       const busy = scribe.status === "processing" || notes.some((n) => n.status === "queued" || n.status === "writing");
       if (busy && document.visibilityState === "visible") schedule(POLL_MS);
     } catch (error) {
@@ -162,7 +165,8 @@ export async function renderHistoryDetail(container, route) {
     );
   }
 
-  function draw(scribe) {
+  // gaps: where the recording paused by itself (lib/gaps.js).
+  function draw(scribe, gaps) {
     const title = scribe.title || `${mode.untitled} ${timeOnly(scribe.started_at)}`;
     const head = h(
       "div",
@@ -198,6 +202,7 @@ export async function renderHistoryDetail(container, route) {
       body,
       head,
       statusBanner(scribe),
+      gapsBanner(gaps, { noun: mode.noun }),
       transcribed ? transcriptCard(scribe.transcript ?? "", { collapsed: false }) : null,
       transcribed ? anotherNoteForm(scribeId, templatesOfMode(templates, mode.id), () => schedule(0)) : null,
       notesBox,

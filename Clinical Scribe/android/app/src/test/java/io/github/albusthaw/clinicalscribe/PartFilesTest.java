@@ -74,6 +74,39 @@ public class PartFilesTest {
     }
 
     @Test
+    public void keepsTheGapBesideThePartRecordedAfterIt() throws IOException {
+        writePart(1, AdtsTest.frames(3, 40));
+        writePart(2, AdtsTest.frames(3, 40));
+        files.writeGap(ID, 2, new Gap(PauseRules.CALL, 81_234, 5_000));
+        assertTrue(new File(files.folder(ID), "0002.gap").isFile());
+        List<PartFiles.Part> parts = files.list(ID, 0);
+        assertEquals("the gap file is not a part", 2, parts.size());
+        assertEquals(null, parts.get(0).gap);
+        assertEquals(PauseRules.CALL, parts.get(1).gap.reason);
+        assertEquals(81_234, parts.get(1).gap.ms);
+
+        files.delete(ID, 2);
+        assertFalse("the gap goes with its part", new File(files.folder(ID), "0002.gap").exists());
+        files.delete(ID, 1);
+        assertFalse(files.folder(ID).exists());
+    }
+
+    @Test
+    public void readsOnlyGapsThatMakeSense() {
+        assertEquals("call 81234", new Gap(PauseRules.CALL, 81_234, 0).fileText());
+        Gap read = Gap.fromFileText(" other_audio 1500\n");
+        assertEquals(PauseRules.OTHER_AUDIO, read.reason);
+        assertEquals(1_500, read.ms);
+        assertEquals(-1, read.atMs);
+        assertEquals(null, Gap.fromFileText("call"));
+        assertEquals(null, Gap.fromFileText("CALL 10"));
+        assertEquals(null, Gap.fromFileText("call -5"));
+        assertEquals(null, Gap.fromFileText("call 999999999"));
+        assertEquals(null, Gap.fromFileText(null));
+        assertEquals("a gap is never longer than a day", Gap.MAX_MS, new Gap(PauseRules.CALL, Long.MAX_VALUE, 0).ms);
+    }
+
+    @Test
     public void removesPartsAndEmptyRecordings() throws IOException {
         writePart(1, AdtsTest.frames(3, 40));
         writePart(2, AdtsTest.frames(3, 40));

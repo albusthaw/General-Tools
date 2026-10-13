@@ -1,9 +1,11 @@
 // The Android app's own recorder, seen from the page. Android records by itself
 // (RecorderHub.java), so a recording carries on with the screen off and after the
 // page was closed. This side follows the recorder's state, passes on the pauses
-// Android made by itself (a call, other sound, a busy microphone), and moves every
-// finished part from the phone into the upload queue, then removes it from the
-// phone. The phone bridge is passed in, so the tests can use a stand-in.
+// Android made by itself (a call, other sound, a busy microphone) and its starting
+// again by itself when they end, keeps the gaps those pauses left, and moves every
+// finished part (with the gap it starts after) from the phone into the upload queue,
+// then removes it from the phone. The phone bridge is passed in, so the tests can
+// use a stand-in.
 import { captureError, phoneStartMessage } from "../../lib/recorder/capture-rules.js";
 
 const MIME = "audio/aac";
@@ -20,10 +22,17 @@ export function fromBase64(text) {
   return bytes;
 }
 
+// The gap a part starts after ({ gapMs, gapReason } from the phone), or null.
+function gapOf(part) {
+  const ms = Number(part?.gapMs);
+  if (!Number.isFinite(ms) || ms < 0 || typeof part?.gapReason !== "string") return null;
+  return { seconds: ms / 1000, reason: part.gapReason };
+}
+
 /** A capture for recorder.js that drives the phone's recorder through the bridge. */
 export function createNativeCapture({ bridge, now = () => Date.now(), doc = globalThis.document } = {}) {
-  let job = null; // { scribeId, userId, prefix, storePart, onPaused, onResumed, onEnded }
-  let snapshot = { phase: "idle", activeMs: 0, reason: "" };
+  let job = null; // { scribeId, userId, prefix, storePart, onPaused, onResumed, onEnded, onGaps }
+  let snapshot = { phase: "idle", activeMs: 0, reason: "", waiting: false, gaps: [] };
   let snapshotAt = now();
   let handles = [];
   let chain = Promise.resolve();
@@ -33,7 +42,12 @@ export function createNativeCapture({ bridge, now = () => Date.now(), doc = glob
   const collected = new Set();
 
   function take(state) {
-    snapshot = { ...state, activeMs: Number(state?.activeMs) || 0 };
+    snapshot = {
+      ...state,
+      activeMs: Number(state?.activeMs) || 0,
+      waiting: Boolean(state?.waiting),
+      gaps: Array.isArray(state?.gaps) ? state.gaps : snapshot.gaps,
+    };
     snapshotAt = now();
   }
 
@@ -41,16 +55,20 @@ export function createNativeCapture({ bridge, now = () => Date.now(), doc = glob
     return snapshot.activeMs + (snapshot.phase === "recording" ? Math.max(0, now() - snapshotAt) : 0);
   }
 
+  const gapKey = () => `${snapshot.gaps.length}:${snapshot.waiting}`;
+
   // A new state from the phone. Pauses, resumes and endings that did not come
-  // from this page are passed on.
+  // from this page are passed on, and so are new gaps and the end of the waiting.
   function apply(state) {
     if (!job || !state || state.scribeId !== job.scribeId) return;
     const was = snapshot.phase;
+    const before = gapKey();
     take(state);
     if (stopping) return;
     if (state.phase === "paused" && was === "recording") job.onPaused?.(state.reason || "user");
     else if (state.phase === "recording" && was === "paused") job.onResumed?.();
     else if (!LIVE.has(state.phase) && state.phase !== "stopping" && LIVE.has(was)) job.onEnded?.(state.limitReached ? "limit" : "stopped");
+    if (gapKey() !== before) job.onGaps?.();
   }
 
   async function readWhole(scribeId, seq) {
@@ -68,14 +86,14 @@ export function createNativeCapture({ bridge, now = () => Date.now(), doc = glob
 
   // Moves one part into the upload queue, one part at a time. A part that cannot
   // be read stays on the phone and is tried again later.
-  function collect(seq, durationMs) {
+  function collect(seq, durationMs, gap) {
     const { scribeId, userId, prefix, storePart } = job;
     chain = chain
       .then(async () => {
         if (collected.has(seq)) return;
         const blob = await readWhole(scribeId, seq);
         if (blob.size > 0) {
-          await storePart({ scribeId, seq, blob, duration: (Number(durationMs) || 0) / 1000, mime: MIME, ext: EXT, prefix, userId });
+          await storePart({ scribeId, seq, blob, duration: (Number(durationMs) || 0) / 1000, mime: MIME, ext: EXT, prefix, userId, gap });
         }
         collected.add(seq);
         await bridge.deletePart({ scribeId, seq }).catch(() => {});
@@ -92,7 +110,7 @@ export function createNativeCapture({ bridge, now = () => Date.now(), doc = glob
     } catch {
       return chain;
     }
-    for (const part of parts) collect(part.seq, part.durationMs);
+    for (const part of parts) collect(part.seq, part.durationMs, gapOf(part));
     return chain;
   }
 
@@ -115,7 +133,7 @@ export function createNativeCapture({ bridge, now = () => Date.now(), doc = glob
     handles = await Promise.all([
       bridge.addListener("recorderState", apply),
       bridge.addListener("recorderPart", (part) => {
-        if (job && part?.scribeId === job.scribeId) collect(part.seq, part.durationMs);
+        if (job && part?.scribeId === job.scribeId) collect(part.seq, part.durationMs, gapOf(part));
       }),
       bridge.addListener("recorderLevel", ({ level }) => {
         levelValue = Math.max(0, Math.min(1, Number(level) || 0));
@@ -132,6 +150,9 @@ export function createNativeCapture({ bridge, now = () => Date.now(), doc = glob
   }
 
   return {
+    /** After a call or other sound the phone starts recording again by itself. */
+    autoResumes: true,
+
     /** The phone checks the microphone itself when recording starts. */
     async prepare() {
       return { mime: MIME, ext: EXT };
@@ -222,6 +243,20 @@ export function createNativeCapture({ bridge, now = () => Date.now(), doc = glob
     tick() {},
 
     elapsedMs,
+
+    /** Where the recording paused by itself and then went on: [{ at, seconds, reason }], in seconds. */
+    gaps() {
+      return snapshot.gaps.map((gap) => ({
+        at: Math.max(0, Number(gap?.atMs) || 0) / 1000,
+        seconds: Math.max(0, Number(gap?.gapMs) || 0) / 1000,
+        reason: String(gap?.reason ?? ""),
+      }));
+    },
+
+    /** True while paused by a call or other sound, until the phone starts again by itself. */
+    waiting() {
+      return snapshot.phase === "paused" && snapshot.waiting;
+    },
 
     level() {
       return snapshot.phase === "recording" && now() - levelAt < LEVEL_FRESH_MS ? levelValue : 0;

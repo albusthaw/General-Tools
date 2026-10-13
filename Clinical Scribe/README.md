@@ -112,7 +112,12 @@ The app is installed from your website, not from Google Play. From 30 September 
 
 ### Calls and other sound
 
-A recording never ends by itself, in the apps or on the website. A phone call, music or video from another app, an alarm, or a microphone that stops makes the recording pause. Everything recorded so far is kept, the recorder says why it paused, and **Resume** carries on when you are ready. During a call, Resume waits until the call has ended. Only **Finish** and **Discard** end a recording.
+A recording never ends by itself, in the apps or on the website. A phone call or ringtone, music or video from another app, an alarm, or a microphone that stops makes the recording pause. Everything recorded so far is kept, and the recorder says why it paused. Only **Finish** and **Discard** end a recording.
+
+- **Android app:** the recording starts again by itself as soon as the call or the sound has ended, with the screen on or off. The notification says so while it waits. A pause you make yourself never ends by itself. If the recording has waited for an hour, it stops waiting; tap **Resume** when you are ready.
+- **Website and iPhone web app:** tap **Resume** when you are ready. During a call, Resume waits until the call has ended.
+
+Each pause like this is an **information gap**: nothing was recorded there. The recorder lists where it paused, and after **Finish** the processing screen and History show each gap: the time in the recording, how long it lasted and why. The transcript marks each gap at its exact place, and every note points it out, whatever the template, with the sentence "There is an information gap after … Please relate accordingly."
 
 ### Build the Android app
 
@@ -222,7 +227,9 @@ The full security design is in `project.md` (section 7).
 | "The Template Type cannot be changed" | A template keeps the type it was made with. Make a new template and choose the other **Template Type**. |
 | "A Voice Note is being recorded" on the Clinical Scribe tab (or the other way round) | Only one recording runs at a time. Tap **Go to the recording**, then finish or discard it before you start another one. |
 | Android says "App not installed" when updating | The new copy was signed with another key. Remove the old app first, then install. Set up the signing key ([Build the Android app](#build-the-android-app)) so this does not happen again. |
-| The recording paused by itself | A call, sound from another app or a microphone problem paused it, and the recorder says which. Tap **Resume** when you are ready; nothing recorded is lost. |
+| The recording paused by itself | A call, sound from another app or a microphone problem paused it, and the recorder says which. The Android app starts again by itself when the call or the sound ends; on the website and the iPhone, tap **Resume** when you are ready. Nothing recorded is lost. |
+| The Android recording did not start again after a call | It starts again once the call has ended and the phone has been quiet for two seconds. While another app plays sound or uses the microphone, it waits for that too, and after an hour it stops waiting. Tap **Resume** in the app or in the notification. |
+| A note says "There is an information gap after …" | The recording paused by itself there, for example for a phone call, so nothing was recorded for a while. The note, the transcript and History show the time and how long it lasted. Check what was said at that point and add it to the note yourself if needed. |
 | The iPhone recording paused when the screen locked | iPhone pauses a web app's recording when the phone locks or another app opens. Use **Screen off** to record with a dark screen. If the phone still locks, turn off Low Power Mode and set **Auto-Lock** to **Never** in Settings. |
 | The Android recording stops after the screen has been off for a while | Some phones close apps to save battery. In the phone's **Settings → Apps → Clinical Scribe → Battery**, choose **Unrestricted** (the words differ a little between phone makers). |
 | A recording stopped with "This ElevenLabs account cannot use zero retention" | ElevenLabs allows zero retention only for Enterprise accounts. In **AI settings → Transcription**, switch off **Ask ElevenLabs not to keep recordings** and save. Then open the recording in History and choose **Try again**. |
@@ -280,6 +287,15 @@ The workflow **Test Clinical Scribe** runs the same tests on GitHub whenever thi
 5. Tag the release as `cscribe-v<version>`, for example `cscribe-v1.1.0`.
 
 ## Changes
+
+### 1.6.0
+
+- In the Android app, a recording paused by a phone call, a ringtone, other sound or a busy microphone now starts again by itself once the call or the sound has ended. A pause you make yourself still waits for **Resume**.
+- Each such pause is an **information gap**. The recorder lists where it paused, and so do the processing screen and History: the time in the recording, how long it lasted and why.
+- The transcript marks each gap at its exact place. Every note points it out, whatever the template: "There is an information gap after … Please relate accordingly." If the AI leaves one out, the sentence is added at the end of the note.
+- Notes follow short, strict rules against guessing: only what the transcript says, nothing usual or likely added, no guess for unclear words, and a last check of every statement against the transcript.
+- On the website and the iPhone web app, the recording still waits for **Resume**, and its gaps are marked the same way.
+- The phone apps need a server on version 1.6.0 or newer.
 
 ### 1.5.1
 

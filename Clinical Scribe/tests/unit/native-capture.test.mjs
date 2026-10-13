@@ -1,8 +1,10 @@
 // Unit tests for recording in the Android app (native-capture-core.js) with a
 // stand-in for the phone: the recording starts with the right settings, finished
-// parts are read in pieces, queued and removed from the phone, pauses the phone
-// made by itself (a call) are passed on, Resume is refused during a call, Finish
-// collects every part, and parts left after the app was closed reach their owner.
+// parts are read in pieces, queued with the gap they start after and removed from
+// the phone, pauses the phone made by itself (a call) and its starting again by
+// itself are passed on with the gaps they left, Resume is refused during a call,
+// Finish collects every part, and parts left after the app was closed reach their
+// owner.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createNativeCapture, findPhoneRecording, READ_BYTES, recoverPhoneParts } from "../../web/src/app/native/native-capture-core.js";
@@ -180,6 +182,50 @@ test("a pause the phone made by itself is passed on with its reason; the person'
   assert.deepEqual(events.paused, ["call"], "a pause asked for by the page is not reported back");
   phone.emit("recorderState", { scribeId: "33333333-3333-4333-8333-333333333333", phase: "paused", reason: "call" });
   assert.deepEqual(events.paused, ["call"], "another recording's state is ignored");
+});
+
+test("the phone's waiting, its starting again by itself and the gaps it left are passed on", async () => {
+  const phone = fakePhone();
+  const capture = createNativeCapture({ bridge: phone, doc: null });
+  let gapNews = 0;
+  const { options, events } = job({ onGaps: () => (gapNews += 1) });
+  await capture.begin(options);
+  assert.equal(capture.autoResumes, true, "the Android app starts again by itself");
+  assert.deepEqual(capture.gaps(), []);
+
+  phone.emit("recorderState", { ...phone.state(), phase: "paused", reason: "call", activeMs: 4000, waiting: true, gaps: [] });
+  assert.deepEqual(events.paused, ["call"]);
+  assert.equal(capture.waiting(), true);
+  assert.equal(gapNews, 1, "the waiting is news");
+
+  phone.emit("recorderState", { ...phone.state(), phase: "recording", reason: "", activeMs: 4000, waiting: false, gaps: [] });
+  assert.equal(events.resumed, 1, "starting again by itself is passed on like Resume");
+  assert.equal(capture.waiting(), false);
+  phone.emit("recorderState", { ...phone.state(), phase: "recording", activeMs: 4100, waiting: false, gaps: [{ atMs: 4000, gapMs: 81_234, reason: "call" }] });
+  assert.equal(gapNews, 3);
+  assert.deepEqual(capture.gaps(), [{ at: 4, seconds: 81.234, reason: "call" }]);
+  phone.emit("recorderState", { ...phone.state(), phase: "recording", activeMs: 9000, waiting: false, gaps: [{ atMs: 4000, gapMs: 81_234, reason: "call" }] });
+  assert.equal(gapNews, 3, "the same gaps are no news");
+});
+
+test("a part carries the gap it starts after into the upload queue", async () => {
+  const phone = fakePhone();
+  const capture = createNativeCapture({ bridge: phone, doc: null });
+  const { options, stored } = job();
+  await capture.begin(options);
+  phone.folder(SCRIBE).set(1, bytes(30));
+  phone.folder(SCRIBE).set(2, bytes(40));
+  phone.emit("recorderPart", { scribeId: SCRIBE, seq: 1, durationMs: 4000 });
+  phone.emit("recorderPart", { scribeId: SCRIBE, seq: 2, durationMs: 9000, gapMs: 81_234, gapReason: "call" });
+  // A part left on the phone (the page was closed) carries its gap too.
+  phone.folder(SCRIBE).set(3, bytes(20));
+  phone.pendingParts = async () => ({ parts: [{ seq: 3, bytes: 20, durationMs: 2000, gapMs: 1500, gapReason: "other_audio" }] });
+  await capture.finish();
+  assert.deepEqual(stored.map((part) => [part.seq, part.gap]), [
+    [1, null],
+    [2, { seconds: 81.234, reason: "call" }],
+    [3, { seconds: 1.5, reason: "other_audio" }],
+  ]);
 });
 
 test("Resume is refused while a call goes on, and carries on after it", async () => {
